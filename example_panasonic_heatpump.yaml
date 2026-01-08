@@ -1,47 +1,20 @@
-esp32:
-  board: lolin_s2_mini
-  variant: ESP32S2
-  framework:
-    type: esp-idf
-
-esphome:
-  name: panasonic-heatpump
-  friendly_name: Panasonic Heatpump
-
-ota:
-  platform: esphome
-  password: !secret ota_password
-
-api:
-  encryption:
-    key: !secret ha_api_key
-
-wifi:
-  ssid: !secret wifi_ssid
-  password: !secret wifi_password
-  ap:
-    ssid: "Panasonic Heatpump Fallback"
-    password: !secret fallback_password
-
-logger:
-
 external_components:
   - source:
       type: git
-      url: https://github.com/ElVit/esphome_components/
+      url: https://github.com/kamilzierke/esphome_heishamon_component
     components: [ panasonic_heatpump ]
 
 uart:
   - id: uart_heatpump
-    tx_pin: GPIO37  # heatpump reads data (RX) on this pin    (yellow)
-    rx_pin: GPIO39  # heatpump sends data (TX) on this pin    (green)
+    tx_pin: GPIO37  # heatpump reads data (RX) on this pin
+    rx_pin: GPIO39  # heatpump sends data (TX) on this pin
     baud_rate: 9600
     data_bits: 8
     parity: EVEN
     stop_bits: 1
   - id: uart_cz_taw1
-    tx_pin: GPIO16  # WiFi module reads data (RX) on this pin (blue)
-    rx_pin: GPIO18  # WiFi module sends data (TX) on this pin (white)
+    tx_pin: GPIO16  # WiFi module reads data (RX) on this pin
+    rx_pin: GPIO18  # WiFi module sends data (TX) on this pin
     baud_rate: 9600
     data_bits: 8
     parity: EVEN
@@ -249,19 +222,24 @@ sensor:
       name: "Bivalent Advanced Stop Delay"
     top138:
       name: "Bivalent Advanced DHW Delay"
-
     xtop0:
       name: "Heat Power Consumption Extra"
+      id: heat_power_consumption_extra
     xtop1:
       name: "Cool Power Consumption Extra"
+      id: cool_power_consumption_extra
     xtop2:
       name: "DHW Power Consumption Extra"
+      id: dhw_power_consumption_extra
     xtop3:
       name: "Heat Power Production Extra"
+      id: heat_power_production_extra
     xtop4:
       name: "Cool Power Production Extra"
+      id: cool_power_production_extra
     xtop5:
       name: "DHW Power Production Extra"
+      id: dhw_power_production_extra
 
   - platform: total_daily_energy
     name: Heat Power Consumption Daily
@@ -290,9 +268,65 @@ sensor:
     accuracy_decimals: 3
     filters:
       - multiply: 0.001
+  - platform: total_daily_energy
+    name: Heat Power Consumption Extra Daily
+    power_id: heat_power_consumption_extra
+    unit_of_measurement: kWh
+    state_class: total_increasing
+    device_class: energy
+    accuracy_decimals: 3
+    filters:
+      - multiply: 0.001
+  - platform: total_daily_energy
+    name: Cool Power Consumption Extra Daily
+    power_id: cool_power_consumption_extra
+    unit_of_measurement: kWh
+    state_class: total_increasing
+    device_class: energy
+    accuracy_decimals: 3
+    filters:
+      - multiply: 0.001
+  - platform: total_daily_energy
+    name: DHW Power Consumption Extra Daily
+    power_id: dhw_power_consumption_extra
+    unit_of_measurement: kWh
+    state_class: total_increasing
+    device_class: energy
+    accuracy_decimals: 3
+    filters:
+      - multiply: 0.001
+  - platform: total_daily_energy
+    name: Heat Power Production Extra Daily
+    power_id: heat_power_production_extra
+    unit_of_measurement: kWh
+    state_class: total_increasing
+    device_class: energy
+    accuracy_decimals: 3
+    filters:
+      - multiply: 0.001
+  - platform: total_daily_energy
+    name: Cool Power Production Extra Daily
+    power_id: cool_power_production_extra
+    unit_of_measurement: kWh
+    state_class: total_increasing
+    device_class: energy
+    accuracy_decimals: 3
+    filters:
+      - multiply: 0.001
+  - platform: total_daily_energy
+    name: DHW Power Production Extra Daily
+    power_id: dhw_power_production_extra
+    unit_of_measurement: kWh
+    state_class: total_increasing
+    device_class: energy
+    accuracy_decimals: 3
+    filters:
+      - multiply: 0.001
 
 binary_sensor:
   - platform: panasonic_heatpump
+    uart_client_timed_out:
+      name: "UART Client Timed Out"
     top0:
       name: "Heatpump State"
     top2:
@@ -339,6 +373,16 @@ binary_sensor:
       name: "Bivalent Advanced Heat"
     top133:
       name: "Bivalent Advanced DHW"
+    opt0:
+      name: "Z1 Water Pump"
+    opt2:
+      name: "Z2 Water Pump"
+    opt4:
+      name: "Pool Water Pump"
+    opt5:
+      name: "Solar Water Pump"
+    opt6:
+      name: "Alarm State"
 
 text_sensor:
   - platform: panasonic_heatpump
@@ -384,6 +428,10 @@ text_sensor:
       name: "ThreeWay Valve State2"
     top130:
       name: "Bivalent Mode"
+    opt1:
+      name: "Z1 Mixing Valve"
+    opt3:
+      name: "Z2 Mixing Valve"
 
 number:
   - platform: panasonic_heatpump
