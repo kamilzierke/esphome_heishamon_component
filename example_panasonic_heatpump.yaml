@@ -1,7 +1,7 @@
 external_components:
   - source:
       type: git
-      url: https://github.com/ElVit/esphome_components/
+      url: https://github.com/kamilzierke/esphome_heishamon_component
     components: [ panasonic_heatpump ]
 
 uart:
