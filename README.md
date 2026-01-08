@@ -16,6 +16,8 @@ With this component you can:
 
 Compared to the original component, this repository focuses on making it easier to adopt and validate:
 
+- Adds Optional PCB (OPT0–OPT6) polling and entity support, including mixing-valve state text sensors and optional pump/alarm binary sensors.
+- Documents and ships a full example configuration that includes all readable TOP/XTOP/OPT entities plus daily energy sensors for XTOP power metrics.
 - Includes a ready-to-use example configuration (`example_panasonic_heatpump.yaml`) for fast onboarding.
 - Provides detailed, comprehensive configuration documentation with full entity lists in `components/panasonic_heatpump/README.md`.
 - Adds wiring guidance and a prototype diagram in `prototypes/panasonic_heatpump/` to simplify hardware setup.
