@@ -518,6 +518,8 @@ number:
       name: "Set Bivalent AP Stop Temp"
 ```
 
+Note: the default range for `set20` (DHW Heat Delta) is 1–15 K, matching the protocol byte-minus-128 value used by HeishaMon/topic 22.
+
 ### Switches
 
 All switches are optional and all options from [switch component](https://esphome.io/components/switch/) can be applied.  
