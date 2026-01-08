@@ -34,6 +34,11 @@ CONF_TOP124 = "top124"  # Z1 Pump State
 CONF_TOP129 = "top129"  # Bivalent Control
 CONF_TOP132 = "top132"  # Bivalent Advanced Heat
 CONF_TOP133 = "top133"  # Bivalent Advanced DHW
+CONF_OPT0 = "opt0"  # Z1 Water Pump
+CONF_OPT2 = "opt2"  # Z2 Water Pump
+CONF_OPT4 = "opt4"  # Pool Water Pump
+CONF_OPT5 = "opt5"  # Solar Water Pump
+CONF_OPT6 = "opt6"  # Alarm State
 
 TYPES = [
     CONF_UART_CLIENT_TIMED_OUT,
@@ -60,7 +65,19 @@ TYPES = [
     CONF_TOP129,
     CONF_TOP132,
     CONF_TOP133,
+    CONF_OPT0,
+    CONF_OPT2,
+    CONF_OPT4,
+    CONF_OPT5,
+    CONF_OPT6,
 ]
+OPT_TYPES = {
+    CONF_OPT0,
+    CONF_OPT2,
+    CONF_OPT4,
+    CONF_OPT5,
+    CONF_OPT6,
+}
 
 PanasonicHeatpumpBinarySensor = panasonic_heatpump_ns.class_(
     "PanasonicHeatpumpBinarySensor", binary_sensor.BinarySensor, cg.Component
@@ -153,6 +170,21 @@ CONFIG_SCHEMA = cv.Schema(
         cv.Optional(CONF_TOP133): binary_sensor.binary_sensor_schema(
             PanasonicHeatpumpBinarySensor,
         ),
+        cv.Optional(CONF_OPT0): binary_sensor.binary_sensor_schema(
+            PanasonicHeatpumpBinarySensor,
+        ),
+        cv.Optional(CONF_OPT2): binary_sensor.binary_sensor_schema(
+            PanasonicHeatpumpBinarySensor,
+        ),
+        cv.Optional(CONF_OPT4): binary_sensor.binary_sensor_schema(
+            PanasonicHeatpumpBinarySensor,
+        ),
+        cv.Optional(CONF_OPT5): binary_sensor.binary_sensor_schema(
+            PanasonicHeatpumpBinarySensor,
+        ),
+        cv.Optional(CONF_OPT6): binary_sensor.binary_sensor_schema(
+            PanasonicHeatpumpBinarySensor,
+        ),
     }
 ).extend(cv.COMPONENT_SCHEMA)
 
@@ -165,4 +197,8 @@ async def to_code(config):
             await cg.register_component(var, child_config)
             cg.add(var.set_parent(parent))
             cg.add(var.set_id(index))
-            cg.add(parent.add_binary_sensor(var))
+            if key in OPT_TYPES:
+                cg.add(parent.set_optional_pcb_enabled(True))
+                cg.add(parent.add_optional_binary_sensor(var))
+            else:
+                cg.add(parent.add_binary_sensor(var))

@@ -14,6 +14,12 @@
 #ifndef OPTIONAL_MESSAGE_SIZE
 #define OPTIONAL_MESSAGE_SIZE 20
 #endif
+#ifndef OPTIONAL_REQUEST_SIZE
+#define OPTIONAL_REQUEST_SIZE 19
+#endif
+#ifndef OPTIONAL_RESPONSE_SIZE
+#define OPTIONAL_RESPONSE_SIZE 20
+#endif
 
 namespace esphome {
 namespace panasonic_heatpump {
@@ -40,6 +46,7 @@ class PanasonicCommand {
   static const uint8_t PollingMessage[DATA_MESSAGE_SIZE];
   static const uint8_t PollingExtraMessage[DATA_MESSAGE_SIZE];
   static const uint8_t CommandMessage[DATA_MESSAGE_SIZE];
+  static const uint8_t OptionalPCBQuery[OPTIONAL_REQUEST_SIZE];
 };
 }  // namespace panasonic_heatpump
 }  // namespace esphome

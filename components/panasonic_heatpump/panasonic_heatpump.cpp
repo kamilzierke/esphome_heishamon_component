@@ -21,6 +21,13 @@ void PanasonicHeatpumpComponent::setup() {
 void PanasonicHeatpumpComponent::update() {
   if (this->uart_client_ != nullptr)
     return;
+  if (this->optional_pcb_enabled_) {
+    this->next_request_ = this->optional_request_toggle_ ? RequestType::POLLING_OPTIONAL
+                                                         : (this->send_extra_request_ ? RequestType::POLLING_EXTRA
+                                                                                      : RequestType::POLLING);
+    this->optional_request_toggle_ = !this->optional_request_toggle_;
+    return;
+  }
   this->next_request_ = this->send_extra_request_ ? RequestType::POLLING_EXTRA : RequestType::POLLING;
 }
 
@@ -50,6 +57,9 @@ void PanasonicHeatpumpComponent::loop() {
       break;
     case ResponseType::EXTRA:
       this->loop_state_ = LoopState::PUBLISH_EXTRA_SENSOR;
+      break;
+    case ResponseType::OPTIONAL:
+      this->loop_state_ = LoopState::PUBLISH_OPTIONAL_BINARY_SENSOR;
       break;
     };
     break;
@@ -98,6 +108,18 @@ void PanasonicHeatpumpComponent::loop() {
   case LoopState::PUBLISH_EXTRA_SENSOR:
     for (auto* entity : this->extra_sensors_) {
       entity->publish_new_state(this->heatpump_extra_message_);
+    }
+    this->loop_state_ = LoopState::SEND_REQUEST;
+    break;
+  case LoopState::PUBLISH_OPTIONAL_BINARY_SENSOR:
+    for (auto* entity : this->optional_binary_sensors_) {
+      entity->publish_new_state(this->heatpump_optional_message_);
+    }
+    this->loop_state_ = LoopState::PUBLISH_OPTIONAL_TEXT_SENSOR;
+    break;
+  case LoopState::PUBLISH_OPTIONAL_TEXT_SENSOR:
+    for (auto* entity : this->optional_text_sensors_) {
+      entity->publish_new_state(this->heatpump_optional_message_);
     }
     this->loop_state_ = LoopState::SEND_REQUEST;
     break;
@@ -191,6 +213,12 @@ void PanasonicHeatpumpComponent::send_request(RequestType requestType) {
     this->write_array(PanasonicCommand::PollingExtraMessage, DATA_MESSAGE_SIZE);
     this->flush();
     break;
+  case RequestType::POLLING_OPTIONAL:
+    if (this->log_uart_msg_)
+      PanasonicHelpers::log_uart_hex(UART_LOG_TX, PanasonicCommand::OptionalPCBQuery, OPTIONAL_REQUEST_SIZE, ',');
+    this->write_array(PanasonicCommand::OptionalPCBQuery, OPTIONAL_REQUEST_SIZE);
+    this->flush();
+    break;
   };
 
   // Update last request time when request was sent
@@ -276,29 +304,38 @@ ResponseType PanasonicHeatpumpComponent::check_response(const std::vector<uint8_
     return ResponseType::UNKNOWN;
   if (this->response_receiving_)
     return ResponseType::UNKNOWN;
-  if (data.size() != RESPONSE_MSG_SIZE) {
-    ESP_LOGW(TAG, "Invalid response message length: recieved %d - expected %d", data.size(), RESPONSE_MSG_SIZE);
+  if (data.size() != RESPONSE_MSG_SIZE && data.size() != OPTIONAL_RESPONSE_SIZE) {
+    ESP_LOGW(TAG, "Invalid response message length: recieved %d - expected %d or %d", data.size(), RESPONSE_MSG_SIZE,
+             OPTIONAL_RESPONSE_SIZE);
     delay(10);  // NOLINT
     return ResponseType::UNKNOWN;
   }
 
-  // Verify checksum
-  uint8_t checksum = 0;
-  for (int i = 0; i < data.size(); i++) {
-    checksum += data[i];
-  }
-  // all bytes (including checksum byte) shall be 0x00
-  if (checksum != 0) {
-    ESP_LOGW(TAG, "Invalid response message: checksum = 0x%02X, last_byte = 0x%02X", checksum, data[202]);
-    delay(10);  // NOLINT
-    return ResponseType::UNKNOWN;
+  if (data.size() == RESPONSE_MSG_SIZE) {
+    // Verify checksum
+    uint8_t checksum = 0;
+    for (int i = 0; i < data.size(); i++) {
+      checksum += data[i];
+    }
+    // all bytes (including checksum byte) shall be 0x00
+    if (checksum != 0) {
+      ESP_LOGW(TAG, "Invalid response message: checksum = 0x%02X, last_byte = 0x%02X", checksum, data.back());
+      delay(10);  // NOLINT
+      return ResponseType::UNKNOWN;
+    }
   }
 
-  this->send_extra_request_ = data[3] == 0x10 && data[199] > 0x02 && this->send_extra_request_ == false ? true : false;
+  if (data.size() == RESPONSE_MSG_SIZE) {
+    this->send_extra_request_ =
+        data[3] == 0x10 && data[199] > 0x02 && this->send_extra_request_ == false ? true : false;
+  }
 
   // Get response type and save the response
   auto responseType = ResponseType::UNKNOWN;
-  if (data[3] == 0x10) {
+  if (data.size() == OPTIONAL_RESPONSE_SIZE && data[3] == 0x50) {
+    responseType = ResponseType::OPTIONAL;
+    this->heatpump_optional_message_ = data;
+  } else if (data[3] == 0x10) {
     responseType = ResponseType::STANDARD;
     this->heatpump_default_message_ = data;
   } else if (data[3] == 0x21) {
@@ -306,7 +343,7 @@ ResponseType PanasonicHeatpumpComponent::check_response(const std::vector<uint8_
     this->heatpump_extra_message_ = data;
   }
   if (responseType == ResponseType::UNKNOWN) {
-    ESP_LOGW(TAG, "Unknown response type (4. byte): 0x%02X. Expected 0x10 or 0x21.", data[3]);
+    ESP_LOGW(TAG, "Unknown response type (4. byte): 0x%02X. Expected 0x10, 0x21 or 0x50.", data[3]);
     delay(10);  // NOLINT
     return responseType;
   }
