@@ -311,16 +311,18 @@ ResponseType PanasonicHeatpumpComponent::check_response(const std::vector<uint8_
     return ResponseType::UNKNOWN;
   }
 
-  // Verify checksum
-  uint8_t checksum = 0;
-  for (int i = 0; i < data.size(); i++) {
-    checksum += data[i];
-  }
-  // all bytes (including checksum byte) shall be 0x00
-  if (checksum != 0) {
-    ESP_LOGW(TAG, "Invalid response message: checksum = 0x%02X, last_byte = 0x%02X", checksum, data[202]);
-    delay(10);  // NOLINT
-    return ResponseType::UNKNOWN;
+  if (data.size() == RESPONSE_MSG_SIZE) {
+    // Verify checksum
+    uint8_t checksum = 0;
+    for (int i = 0; i < data.size(); i++) {
+      checksum += data[i];
+    }
+    // all bytes (including checksum byte) shall be 0x00
+    if (checksum != 0) {
+      ESP_LOGW(TAG, "Invalid response message: checksum = 0x%02X, last_byte = 0x%02X", checksum, data.back());
+      delay(10);  // NOLINT
+      return ResponseType::UNKNOWN;
+    }
   }
 
   if (data.size() == RESPONSE_MSG_SIZE) {
