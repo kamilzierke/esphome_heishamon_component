@@ -45,6 +45,8 @@ CONF_TOP114 = "top114"  # External Pad Heater
 CONF_TOP125 = "top125"  # TwoWay Valve State
 CONF_TOP126 = "top126"  # ThreeWay Valve State2
 CONF_TOP130 = "top130"  # Bivalent Mode
+CONF_OPT1 = "opt1"  # Z1 Mixing Valve
+CONF_OPT3 = "opt3"  # Z2 Mixing Valve
 
 TYPES = [
     CONF_TOP4,
@@ -68,7 +70,13 @@ TYPES = [
     CONF_TOP125,
     CONF_TOP126,
     CONF_TOP130,
+    CONF_OPT1,
+    CONF_OPT3,
 ]
+OPT_TYPES = {
+    CONF_OPT1,
+    CONF_OPT3,
+}
 
 PanasonicHeatpumpTextSensor = panasonic_heatpump_ns.class_(
     "PanasonicHeatpumpTextSensor", text_sensor.TextSensor, cg.Component
@@ -160,6 +168,14 @@ CONFIG_SCHEMA = cv.Schema(
         cv.Optional(CONF_TOP130): text_sensor.text_sensor_schema(
             PanasonicHeatpumpTextSensor,
         ),
+        cv.Optional(CONF_OPT1): text_sensor.text_sensor_schema(
+            PanasonicHeatpumpTextSensor,
+            icon=ICON_VALVE,
+        ),
+        cv.Optional(CONF_OPT3): text_sensor.text_sensor_schema(
+            PanasonicHeatpumpTextSensor,
+            icon=ICON_VALVE,
+        ),
     }
 ).extend(cv.COMPONENT_SCHEMA)
 
@@ -172,4 +188,8 @@ async def to_code(config):
             await cg.register_component(var, child_config)
             cg.add(var.set_parent(parent))
             cg.add(var.set_id(index))
-            cg.add(parent.add_text_sensor(var))
+            if key in OPT_TYPES:
+                cg.add(parent.set_optional_pcb_enabled(True))
+                cg.add(parent.add_optional_text_sensor(var))
+            else:
+                cg.add(parent.add_text_sensor(var))

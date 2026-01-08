@@ -189,6 +189,41 @@ void PanasonicHeatpumpBinarySensor::publish_new_state(const std::vector<uint8_t>
     if (this->has_state() && this->state == new_state)
       return;
     break;
+  case BinarySensorIds::CONF_OPT0:
+    if (!require_index(4))
+      return;
+    new_state = (data[4] >> 7) != 0;
+    if (this->has_state() && this->state == new_state)
+      return;
+    break;
+  case BinarySensorIds::CONF_OPT2:
+    if (!require_index(4))
+      return;
+    new_state = ((data[4] >> 4) & 0b1) != 0;
+    if (this->has_state() && this->state == new_state)
+      return;
+    break;
+  case BinarySensorIds::CONF_OPT4:
+    if (!require_index(4))
+      return;
+    new_state = ((data[4] >> 1) & 0b1) != 0;
+    if (this->has_state() && this->state == new_state)
+      return;
+    break;
+  case BinarySensorIds::CONF_OPT5:
+    if (!require_index(4))
+      return;
+    new_state = (data[4] & 0b1) != 0;
+    if (this->has_state() && this->state == new_state)
+      return;
+    break;
+  case BinarySensorIds::CONF_OPT6:
+    if (!require_index(5))
+      return;
+    new_state = (data[5] & 0b1) != 0;
+    if (this->has_state() && this->state == new_state)
+      return;
+    break;
   default:
     return;
   };

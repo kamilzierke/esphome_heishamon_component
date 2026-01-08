@@ -28,6 +28,8 @@ enum LoopState : uint8_t {
   PUBLISH_SWITCH,
   PUBLISH_CLIMATE,
   PUBLISH_EXTRA_SENSOR,
+  PUBLISH_OPTIONAL_BINARY_SENSOR,
+  PUBLISH_OPTIONAL_TEXT_SENSOR,
   SEND_REQUEST,
   READ_REQUEST,
   RESTART_LOOP,
@@ -39,12 +41,14 @@ enum RequestType : uint8_t {
   INITIAL,
   POLLING,
   POLLING_EXTRA,
+  POLLING_OPTIONAL,
 };
 
 enum ResponseType : uint8_t {
   UNKNOWN,
   STANDARD,
   EXTRA,
+  OPTIONAL,
 };
 
 class PanasonicHeatpumpEntity {
@@ -80,6 +84,9 @@ class PanasonicHeatpumpComponent : public PollingComponent, public uart::UARTDev
   void set_log_uart_msg(bool active) {
     this->log_uart_msg_ = active;
   }
+  void set_optional_pcb_enabled(bool active) {
+    this->optional_pcb_enabled_ = active;
+  }
   // uart message variables to use in lambda functions
   int getResponseByte(const int index);
   int getExtraResponseByte(const int index);
@@ -113,6 +120,12 @@ class PanasonicHeatpumpComponent : public PollingComponent, public uart::UARTDev
   void add_extra_sensor(PanasonicHeatpumpEntity* sensor) {
     extra_sensors_.push_back(sensor);
   }
+  void add_optional_binary_sensor(PanasonicHeatpumpEntity* binary_sensor) {
+    optional_binary_sensors_.push_back(binary_sensor);
+  }
+  void add_optional_text_sensor(PanasonicHeatpumpEntity* text_sensor) {
+    optional_text_sensors_.push_back(text_sensor);
+  }
   bool get_uart_client_timeout_exceeded() {
     return this->uart_client_timeout_exceeded_;
   }
@@ -126,6 +139,7 @@ class PanasonicHeatpumpComponent : public PollingComponent, public uart::UARTDev
   // uart message variables
   std::vector<uint8_t> heatpump_default_message_;
   std::vector<uint8_t> heatpump_extra_message_;
+  std::vector<uint8_t> heatpump_optional_message_;
   std::vector<uint8_t> response_message_;
   std::vector<uint8_t> request_message_;
   std::vector<uint8_t> command_message_;
@@ -136,6 +150,8 @@ class PanasonicHeatpumpComponent : public PollingComponent, public uart::UARTDev
   bool response_receiving_{false};
   bool request_receiving_{false};
   bool send_extra_request_{false};
+  bool optional_pcb_enabled_{false};
+  bool optional_request_toggle_{false};
   bool uart_client_timeout_exceeded_{false};
   LoopState loop_state_{LoopState::RESTART_LOOP};
   RequestType next_request_{RequestType::INITIAL};
@@ -149,6 +165,8 @@ class PanasonicHeatpumpComponent : public PollingComponent, public uart::UARTDev
   std::vector<PanasonicHeatpumpEntity*> switches_;
   std::vector<PanasonicHeatpumpEntity*> text_sensors_;
   std::vector<PanasonicHeatpumpEntity*> extra_sensors_;
+  std::vector<PanasonicHeatpumpEntity*> optional_binary_sensors_;
+  std::vector<PanasonicHeatpumpEntity*> optional_text_sensors_;
 
   // uart message functions
   void read_response();
