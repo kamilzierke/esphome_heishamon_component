@@ -177,6 +177,20 @@ void PanasonicHeatpumpTextSensor::publish_new_state(const std::vector<uint8_t>& 
     if (this->has_state() && this->get_state() == new_state)
       return;
     break;
+  case TextSensorIds::CONF_OPT1:
+    if (!require_index(4))
+      return;
+    new_state = PanasonicDecode::getTextState(PanasonicDecode::MixingValve, (data[4] >> 5) & 0b11);
+    if (this->has_state() && this->get_state() == new_state)
+      return;
+    break;
+  case TextSensorIds::CONF_OPT3:
+    if (!require_index(4))
+      return;
+    new_state = PanasonicDecode::getTextState(PanasonicDecode::MixingValve, (data[4] >> 2) & 0b11);
+    if (this->has_state() && this->get_state() == new_state)
+      return;
+    break;
   default:
     return;
   };
