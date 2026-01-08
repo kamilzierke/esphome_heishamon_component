@@ -80,6 +80,12 @@ void PanasonicHeatpumpSwitch::publish_new_state(const std::vector<uint8_t>& data
     if (this->state == new_state)
       return;
     break;
+  case SwitchIds::CONF_SET14:
+    // Byte 4, bits 3-4 (ProtocolByteDecrypt.md: SET14)
+    new_state = PanasonicDecode::getBinaryState(PanasonicDecode::getBit3and4(data[4]));
+    if (this->state == new_state)
+      return;
+    break;
   case SwitchIds::CONF_SET24:
     new_state = PanasonicDecode::getBinaryState(PanasonicDecode::getBit1and2(data[5]));
     if (this->state == new_state)
