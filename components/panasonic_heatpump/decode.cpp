@@ -150,10 +150,14 @@ int PanasonicDecode::getLowNibbleMinus1(uint8_t input) {
 }
 
 int PanasonicDecode::getWordMinus1(const std::vector<uint8_t>& data, uint8_t index) {
+  if (index + 1 >= data.size())
+    return -1;
   return ((data[index + 1] << 8) + data[index]) - 1;
 }
 
 int PanasonicDecode::getUintt16(const std::vector<uint8_t>& data, uint8_t index) {
+  if (index + 1 >= data.size())
+    return -1;
   return (static_cast<uint16_t>((data[index + 1] << 8) | data[index])) - 1;
 }
 
@@ -208,6 +212,8 @@ int PanasonicDecode::getModel(const std::vector<uint8_t>& data, uint8_t index) {
 // input1 = data[169]
 // input2 = data[170]
 float PanasonicDecode::getPumpFlow(const std::vector<uint8_t>& data, uint8_t index) {
+  if (index + 1 >= data.size())
+    return 0.0f;
   return (((float)data[index] - 1) / 256) + ((int)data[index + 1]);
 }
 

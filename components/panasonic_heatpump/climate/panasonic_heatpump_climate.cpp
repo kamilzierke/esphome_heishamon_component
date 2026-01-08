@@ -90,23 +90,39 @@ void PanasonicHeatpumpClimate::publish_new_state(const std::vector<uint8_t>& dat
   if (data.empty())
     return;
 
+  auto require_index = [&](size_t index) {
+    if (data.size() <= index) {
+      ESP_LOGW(TAG, "Data too short (%zu) for index %zu", data.size(), index);
+      return false;
+    }
+    return true;
+  };
+
   uint8_t new_mode;
   float new_target_temp_heat;
   float new_target_temp_cool;
   float new_current_temp;
 
+  if (!require_index(6))
+    return;
   new_mode = this->getClimateMode(data[6]);  // set9
   switch (this->id_) {
   case ClimateIds::CONF_CLIMATE_TANK:
+    if (!require_index(141))
+      return;
     new_target_temp_heat = PanasonicDecode::getByteMinus128(data[42]);  // set11
     new_current_temp = PanasonicDecode::getByteMinus128(data[141]);     // top10
     break;
   case ClimateIds::CONF_CLIMATE_ZONE1:
+    if (!require_index(139))
+      return;
     new_target_temp_heat = PanasonicDecode::getByteMinus128(data[38]);  // set5
     new_target_temp_cool = PanasonicDecode::getByteMinus128(data[39]);  // set6
     new_current_temp = PanasonicDecode::getByteMinus128(data[139]);     // top56
     break;
   case ClimateIds::CONF_CLIMATE_ZONE2:
+    if (!require_index(140))
+      return;
     new_target_temp_heat = PanasonicDecode::getByteMinus128(data[40]);  // set7
     new_target_temp_cool = PanasonicDecode::getByteMinus128(data[41]);  // set8
     new_current_temp = PanasonicDecode::getByteMinus128(data[140]);     // top57

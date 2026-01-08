@@ -68,14 +68,26 @@ void PanasonicHeatpumpSwitch::publish_new_state(const std::vector<uint8_t>& data
   if (data.empty())
     return;
 
+  auto require_index = [&](size_t index) {
+    if (data.size() <= index) {
+      ESP_LOGW(TAG, "Data too short (%zu) for index %zu", data.size(), index);
+      return false;
+    }
+    return true;
+  };
+
   bool new_state;
   switch (this->id_) {
   case SwitchIds::CONF_SET1:
+    if (!require_index(4))
+      return;
     new_state = PanasonicDecode::getBinaryState(PanasonicDecode::getBit7and8(data[4]));
     if (this->state == new_state)
       return;
     break;
   case SwitchIds::CONF_SET10:
+    if (!require_index(4))
+      return;
     new_state = PanasonicDecode::getBinaryState(PanasonicDecode::getBit1and2(data[4]));
     if (this->state == new_state)
       return;
@@ -87,51 +99,71 @@ void PanasonicHeatpumpSwitch::publish_new_state(const std::vector<uint8_t>& data
       return;
     break;
   case SwitchIds::CONF_SET24:
+    if (!require_index(5))
+      return;
     new_state = PanasonicDecode::getBinaryState(PanasonicDecode::getBit1and2(data[5]));
     if (this->state == new_state)
       return;
     break;
   case SwitchIds::CONF_SET12:
+    if (!require_index(111))
+      return;
     new_state = PanasonicDecode::getBinaryState(PanasonicDecode::getBit5and6(data[111]));
     if (this->state == new_state)
       return;
     break;
   case SwitchIds::CONF_SET13:
+    if (!require_index(117))
+      return;
     new_state = PanasonicDecode::getBinaryState(PanasonicDecode::getBit5and6(data[117]));
     if (this->state == new_state)
       return;
     break;
   case SwitchIds::CONF_SET28:
+    if (!require_index(24))
+      return;
     new_state = PanasonicDecode::getBinaryState(PanasonicDecode::getBit5and6(data[24]));
     if (this->state == new_state)
       return;
     break;
   case SwitchIds::CONF_SET25:
+    if (!require_index(20))
+      return;
     new_state = PanasonicDecode::getBinaryState(PanasonicDecode::getBit3and4(data[20]));
     if (this->state == new_state)
       return;
     break;
   case SwitchIds::CONF_SET30:
+    if (!require_index(23))
+      return;
     new_state = PanasonicDecode::getBinaryState(PanasonicDecode::getBit7and8(data[23]));
     if (this->state == new_state)
       return;
     break;
   case SwitchIds::CONF_SET33:
+    if (!require_index(23))
+      return;
     new_state = PanasonicDecode::getBinaryState(PanasonicDecode::getBit5and6(data[23]));
     if (this->state == new_state)
       return;
     break;
   case SwitchIds::CONF_SET31:
+    if (!require_index(23))
+      return;
     new_state = PanasonicDecode::getBinaryState(PanasonicDecode::getBit3and4(data[23]));
     if (this->state == new_state)
       return;
     break;
   case SwitchIds::CONF_SET32:
+    if (!require_index(23))
+      return;
     new_state = PanasonicDecode::getBinaryState(PanasonicDecode::getBit1and2(data[23]));
     if (this->state == new_state)
       return;
     break;
   case SwitchIds::CONF_SET34:
+    if (!require_index(26))
+      return;
     new_state = PanasonicDecode::getBinaryState(PanasonicDecode::getBit7and8(data[26]));
     if (this->state == new_state)
       return;
