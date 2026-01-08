@@ -114,7 +114,7 @@ void PanasonicHeatpumpNumber::control(float value) {
     return;
   };
 
-  this->publish_state(state);
+  this->publish_state(value);
   this->keep_state_ = 2;
 }
 
