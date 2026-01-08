@@ -53,41 +53,63 @@ void PanasonicHeatpumpSelect::publish_new_state(const std::vector<uint8_t>& data
   if (data.empty())
     return;
 
+  auto require_index = [&](size_t index) {
+    if (data.size() <= index) {
+      ESP_LOGW(TAG, "Data too short (%zu) for index %zu", data.size(), index);
+      return false;
+    }
+    return true;
+  };
+
   std::string new_state;
   switch (this->id_) {
   case SelectIds::CONF_SET9:
+    if (!require_index(6))
+      return;
     new_state =
         PanasonicDecode::getTextState(PanasonicDecode::OperationMode, PanasonicDecode::getOperationMode(data[6]));
     if (this->has_state() && this->current_option() == new_state)
       return;
     break;
   case SelectIds::CONF_SET4:
+    if (!require_index(7))
+      return;
     new_state = PanasonicDecode::getTextState(PanasonicDecode::PowerfulMode, PanasonicDecode::getBit6and7and8(data[7]));
     if (this->has_state() && this->current_option() == new_state)
       return;
     break;
   case SelectIds::CONF_SET3:
+    if (!require_index(7))
+      return;
     new_state = PanasonicDecode::getTextState(PanasonicDecode::QuietMode, PanasonicDecode::getBit3and4and5(data[7]));
     if (this->has_state() && this->current_option() == new_state)
       return;
     break;
   case SelectIds::CONF_SET2:
+    if (!require_index(5))
+      return;
     new_state = PanasonicDecode::getTextState(PanasonicDecode::HolidayState, PanasonicDecode::getBit3and4(data[5]));
     if (this->has_state() && this->current_option() == new_state)
       return;
     break;
   case SelectIds::CONF_SET17:
+    if (!require_index(6))
+      return;
     new_state = PanasonicDecode::getTextState(PanasonicDecode::ZoneState, PanasonicDecode::getBit1and2(data[6]));
     if (this->has_state() && this->current_option() == new_state)
       return;
     break;
   case SelectIds::CONF_SET26:
+    if (!require_index(25))
+      return;
     new_state =
         PanasonicDecode::getTextState(PanasonicDecode::ExtPadHeaterType, PanasonicDecode::getBit3and4(data[25]));
     if (this->has_state() && this->current_option() == new_state)
       return;
     break;
   case SelectIds::CONF_SET35:
+    if (!require_index(26))
+      return;
     new_state = PanasonicDecode::getTextState(PanasonicDecode::BivalentMode, PanasonicDecode::getBit5and6(data[26]));
     if (this->has_state() && this->current_option() == new_state)
       return;

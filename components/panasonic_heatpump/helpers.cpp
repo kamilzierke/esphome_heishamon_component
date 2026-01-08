@@ -6,11 +6,19 @@ static const char* const TAG = "panasonic_heatpump";
 
 void PanasonicHelpers::log_uart_hex(UartLogDirection direction, const std::vector<uint8_t>& data,
                                     const char separator) {
+  if (data.empty()) {
+    ESP_LOGW(TAG, "Skipping UART log for empty data buffer.");
+    return;
+  }
   PanasonicHelpers::log_uart_hex(direction, &data[0], data.size(), separator);
 }
 
 void PanasonicHelpers::log_uart_hex(UartLogDirection direction, const uint8_t* data, const size_t length,
                                     const char separator) {
+  if (data == nullptr || length == 0) {
+    ESP_LOGW(TAG, "Skipping UART log for empty data buffer.");
+    return;
+  }
   std::string logStr = "";
   std::string msgDir = direction == UART_LOG_TX ? ">>>" : "<<<";
   std::string msgType = direction == UART_LOG_TX ? "request" : "response";
@@ -20,7 +28,7 @@ void PanasonicHelpers::log_uart_hex(UartLogDirection direction, const uint8_t* d
     break;
   case 0x71:
     msgType = "polling_" + msgType;
-    if (data[3] == 0x21)
+    if (length > 3 && data[3] == 0x21)
       msgType = "extra_" + msgType;
     break;
   case 0xF1:
@@ -40,6 +48,8 @@ void PanasonicHelpers::log_uart_hex(UartLogDirection direction, const uint8_t* d
 }
 
 std::string PanasonicHelpers::byte_array_to_hex_string(const std::vector<uint8_t>& data, const char separator) {
+  if (data.empty())
+    return "";
   return PanasonicHelpers::byte_array_to_hex_string(&data[0], data.size(), separator);
 }
 
