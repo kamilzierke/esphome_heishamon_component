@@ -73,6 +73,8 @@ binary_sensor:
   - platform: panasonic_heatpump
     top0:
       name: "Heatpump State"
+    opt0:
+      name: "Z1 Water Pump"
 
 text_sensor:
   - platform: panasonic_heatpump
@@ -386,6 +388,16 @@ binary_sensor:
       name: "Bivalent Advanced Heat"
     top133:
       name: "Bivalent Advanced DHW"
+    opt0:
+      name: "Z1 Water Pump"
+    opt2:
+      name: "Z2 Water Pump"
+    opt4:
+      name: "Pool Water Pump"
+    opt5:
+      name: "Solar Water Pump"
+    opt6:
+      name: "Alarm State"
 ```
 
 ### Text Sensors
@@ -398,6 +410,10 @@ text_sensor:
   - platform: panasonic_heatpump
     top4:
       name: "Operating Mode State"
+    opt1:
+      name: "Z1 Mixing Valve"
+    opt3:
+      name: "Z2 Mixing Valve"
     top17:
       name: "Powerful Mode Time"
     top18:
@@ -438,6 +454,10 @@ text_sensor:
       name: "ThreeWay Valve State2"
     top130:
       name: "Bivalent Mode"
+    opt1:
+      name: "Z1 Mixing Valve"
+    opt3:
+      name: "Z2 Mixing Valve"
 ```
 
 ### Numbers
