@@ -37,13 +37,11 @@ void PanasonicHelpers::log_uart_hex(UartLogDirection direction, const uint8_t* d
   };
 
   ESP_LOGI(TAG, "%s %s[%i]", msgDir.c_str(), msgType.c_str(), length);
-  delay(10);
 
   logStr += byte_array_to_hex_string(data, length, separator);
 
   for (size_t i = 0; i < logStr.length(); i += UART_LOG_CHUNK_SIZE) {
     ESP_LOGI(TAG, "%s %s", msgDir.c_str(), logStr.substr(i, UART_LOG_CHUNK_SIZE).c_str());
-    delay(10);
   }
 }
 

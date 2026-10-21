@@ -1,4 +1,6 @@
 #pragma once
+#include <cstdint>
+#include <algorithm>
 #include <cstring>
 #include <string>
 #include <vector>
@@ -7,7 +9,7 @@
 #define RESPONSE_MSG_SIZE 203
 #endif
 #ifndef NUMBER_OF_MODELS
-#define NUMBER_OF_MODELS 55
+#define NUMBER_OF_MODELS 56
 #endif
 
 namespace esphome {
@@ -42,7 +44,7 @@ class PanasonicDecode {
   static float getFractional(uint8_t input, uint8_t shift);
   static std::string getErrorInfo(uint8_t errorType, uint8_t errorNumber);
 
-  static bool getBinaryState(uint8_t input);
+  static bool getBinaryState(int input);
   static std::string getTextState(const char* const array[], int index);
 
   static const constexpr char* const DisabledEnabled[] = {"2", "Disabled", "Enabled"};
@@ -68,7 +70,7 @@ class PanasonicDecode {
   static const constexpr char* const ExtPadHeaterType[] = {"3", "Disabled", "Type-A", "Type-B"};
   static const constexpr char* const BivalentMode[] = {"3", "Alternative", "Parallel", "Advanced Parallel"};
   static const constexpr char* const ModelNames[] = {
-      "55",                                  // string representation of number of known models (last model number + 1)
+      "56",                                  // string representation of number of known models (last model number + 1)
       "WH-MDC05H3E5",                        // 0
       "WH-MDC07H3E5",                        // 1
       "IDU:WH-SXC09H3E5, ODU:WH-UX09HE5",    // 2
@@ -124,6 +126,7 @@ class PanasonicDecode {
       "IDU:WH-SDC0509L3E5, ODU:WH-WDG05LE5",    // 52
       "IDU:WH-ADC0309J3E5C, ODU:WH-UD03JE5",    // 53
       "IDU:WH-ADC0916H9E8, ODU:WH-UX09HE8",     // 54
+      "IDU:WH-SDC0309K3E5, ODU:WH-UDZ07KE5",    // 55: confirmed K revision
   };
 };
 

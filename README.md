@@ -2,6 +2,10 @@
 
 This repository provides an ESPHome external component for Panasonic heat pumps that speak the HeishaMon UART protocol over the CN-CNT connector. It lets an ESP8266/ESP32-class device read live telemetry and control heat pump modes, zones, and DHW settings through ESPHome.
 
+## Panasonic K-series reliability update
+
+The `k_7kw` profile, bounded UART transport, readback-based control and gap-aware daily energy platform are documented in the [migration guide](docs/K_SERIES_UPGRADE.md). See [source attribution](docs/CHANGE_SOURCES.md). The guide covers configuration changes, validation and known limitations.
+
 ## Component functionality
 
 With this component you can:

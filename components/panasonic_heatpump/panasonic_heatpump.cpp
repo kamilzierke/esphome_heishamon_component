@@ -1,4 +1,6 @@
 #include "panasonic_heatpump.h"
+#include <cstdio>
+#include <cinttypes>
 #include "esphome/core/application.h"
 
 namespace esphome {
@@ -6,448 +8,505 @@ namespace panasonic_heatpump {
 static const char* const TAG = "panasonic_heatpump";
 
 void PanasonicHeatpumpComponent::dump_config() {
-  ESP_LOGW(TAG, "*** Panasonic Heatpump Component v%s ***", PANASONIC_HEATPUMP_VERSION);
-  delay(10);  // NOLINT
+  ESP_LOGCONFIG(TAG, "Panasonic Heatpump %s; profile=%s", PANASONIC_HEATPUMP_VERSION, k_profile_ ? "k_7kw" : "generic");
 }
-
 void PanasonicHeatpumpComponent::setup() {
-  ESP_LOGCONFIG(TAG, "Setting up Panasonic Heatpump ...");
-  delay(10);  // NOLINT
-  this->check_uart_settings(9600, 1, uart::UART_CONFIG_PARITY_EVEN, 8);
-
-  this->update();
+  if (k_profile_ && optional_pcb_enabled_) {
+    ESP_LOGE(TAG, "k_7kw profile does not enable optional PCB polling");
+    mark_failed();
+    return;
+  }
+  parent_->set_flush_timeout(500);
+  parser_.allow_optional = optional_pcb_enabled_;
+  client_parser_.requests = true;
+#ifdef USE_ESP32
+  tx_queue_ = xQueueCreate(1, sizeof(protocol::Frame));
+  event_queue_ = xQueueCreate(16, sizeof(Event));
+  if (!tx_queue_ || !event_queue_ ||
+      xTaskCreate(transport_task_, "heatpump_uart", 4096, this, tskIDLE_PRIORITY + 1, &transport_task_handle_) !=
+          pdPASS) {
+    ESP_LOGE(TAG, "Unable to allocate UART task/queues");
+    if (tx_queue_)
+      vQueueDelete(tx_queue_);
+    if (event_queue_)
+      vQueueDelete(event_queue_);
+    tx_queue_ = nullptr;
+    event_queue_ = nullptr;
+    mark_failed();
+  }
+#endif
 }
-
+#ifdef USE_ESP32
+void PanasonicHeatpumpComponent::transport_task_(void* context) {
+  auto* self = static_cast<PanasonicHeatpumpComponent*>(context);
+  for (;;) {
+    self->io_step_();
+    vTaskDelay(std::max<TickType_t>(1, pdMS_TO_TICKS(5)));
+  }
+}
+#endif
+void PanasonicHeatpumpComponent::post_event_(const Event& event) {
+#ifdef USE_ESP32
+  if (xQueueSend(event_queue_, &event, 0) != pdPASS)
+    dropped_events_.store(dropped_events_.load() + 1);
+  rx_queue_high_water_.store(std::max(rx_queue_high_water_.load(), uint32_t(uxQueueMessagesWaiting(event_queue_))));
+#else
+  if (event_queue_.size() < 16)
+    event_queue_.push_back(event);
+  else
+    dropped_events_.store(dropped_events_.load() + 1);
+  rx_queue_high_water_.store(std::max(rx_queue_high_water_.load(), uint32_t(event_queue_.size())));
+#endif
+}
+void PanasonicHeatpumpComponent::io_step_() {
+  protocol::Frame tx;
+#ifdef USE_ESP32
+  const bool send = xQueueReceive(tx_queue_, &tx, 0) == pdPASS;
+#else
+  const bool send = !tx_queue_.empty();
+  if (send) {
+    tx = tx_queue_.front();
+    tx_queue_.pop_front();
+  }
+#endif
+  uint8_t byte;
+  // Bound each pass; UART's ring buffer holds bytes until the next pass.
+  for (size_t count = 0; count < 256 && available(); ++count) {
+    if (!read_byte(&byte))
+      break;
+    if (uart_client_)
+      uart_client_->write_byte(byte);
+    parser_.feed(byte, millis(), [this](const protocol::Frame& frame) {
+      Event event;
+      event.frame = frame;
+      event.bad_header = parser_.bad_header;
+      event.bad_checksum = parser_.bad_checksum;
+      event.timeouts = parser_.timeouts;
+      post_event_(event);
+    });
+  }
+  parser_.tick(millis());
+  if (protocol::elapsed(millis(), worker_stats_time_, 1000)) {
+    worker_stats_time_ = millis();
+    Event stats;
+    stats.kind = EventKind::STATS;
+    stats.bad_header = parser_.bad_header;
+    stats.bad_checksum = parser_.bad_checksum;
+    stats.timeouts = parser_.timeouts;
+    post_event_(stats);
+  }
+  // Timestamp/drain bytes that were buffered before TX first. They cannot
+  // become post-command readback merely because sending took 127 ms.
+  if (send) {
+    write_array(tx.data.data(), tx.size);
+    const auto result = flush();  // only the transport task blocks on ESP32
+    Event event;
+    event.kind = EventKind::TX_DONE;
+    event.frame = tx;
+    event.frame.received_at = millis();
+    // A failed/late TX must never be presented as confirmed delivery.
+    event.frame.started_at = (result == uart::UARTFlushResult::UART_FLUSH_RESULT_SUCCESS ||
+                              result == uart::UARTFlushResult::UART_FLUSH_RESULT_ASSUMED_SUCCESS)
+                                 ? 1
+                                 : 0;
+    post_event_(event);
+  }
+  // Compatibility: the client owns polling while it is active. Its frames are
+  // assembled separately and only the transport owner accesses either UART.
+  if (uart_client_) {
+    for (size_t count = 0; count < 256 && uart_client_->available(); ++count) {
+      if (!uart_client_->read_byte(&byte))
+        break;
+      parent_->write_byte(byte);
+      client_parser_.feed(byte, millis(), [this](const protocol::Frame& frame) {
+        Event event;
+        event.kind = EventKind::CLIENT_REQUEST;
+        event.frame = frame;
+        post_event_(event);
+      });
+    }
+    client_parser_.tick(millis());
+  }
+}
 void PanasonicHeatpumpComponent::update() {
-  if (this->uart_client_ != nullptr)
-    return;
-  if (this->optional_pcb_enabled_) {
-    this->next_request_ = this->optional_request_toggle_ ? RequestType::POLLING_OPTIONAL
-                                                         : (this->send_extra_request_ ? RequestType::POLLING_EXTRA
-                                                                                      : RequestType::POLLING);
-    this->optional_request_toggle_ = !this->optional_request_toggle_;
-    return;
-  }
-  this->next_request_ = this->send_extra_request_ ? RequestType::POLLING_EXTRA : RequestType::POLLING;
+  poll_due_ = true;
 }
-
+bool PanasonicHeatpumpComponent::standard_fresh() const {
+  return standard_valid_ && !protocol::elapsed(millis(), last_standard_time_, data_timeout_);
+}
+bool PanasonicHeatpumpComponent::extra_fresh() const {
+  return extra_valid_ && !protocol::elapsed(millis(), last_extra_time_, data_timeout_);
+}
+int PanasonicHeatpumpComponent::get_response_byte(int index) const {
+  if (standard_fresh() && index >= 0 && size_t(index) < heatpump_default_message_.size())
+    return heatpump_default_message_[index];
+  return -1;
+}
+int PanasonicHeatpumpComponent::get_extra_response_byte(int index) const {
+  if (extra_fresh() && index >= 0 && size_t(index) < heatpump_extra_message_.size())
+    return heatpump_extra_message_[index];
+  return -1;
+}
 void PanasonicHeatpumpComponent::loop() {
-  // Check if no request was sent for uart_client_timeout when uart_client is configured
-  if (this->uart_client_ != nullptr && this->uart_client_timeout_ > 100) {
-    uint32_t current_time = millis();
-    if (current_time - this->last_request_time_ >= this->uart_client_timeout_) {
-      this->next_request_ = RequestType::POLLING;
-      this->uart_client_timeout_exceeded_ = true;
-    }
-  }
-
-  switch (this->loop_state_) {
-  case LoopState::READ_RESPONSE:
-    this->read_response();
-    this->loop_state_ = LoopState::CHECK_RESPONSE;
-    break;
-  case LoopState::CHECK_RESPONSE:
-    this->current_response_ = this->check_response(this->response_message_);
-    switch (this->current_response_) {
-    case ResponseType::UNKNOWN:
-      this->loop_state_ = LoopState::SEND_REQUEST;
-      break;
-    case ResponseType::STANDARD:
-      this->loop_state_ = LoopState::PUBLISH_SENSOR;
-      break;
-    case ResponseType::EXTRA:
-      this->loop_state_ = LoopState::PUBLISH_EXTRA_SENSOR;
-      break;
-    case ResponseType::OPTIONAL:
-      this->loop_state_ = LoopState::PUBLISH_OPTIONAL_BINARY_SENSOR;
-      break;
-    };
-    break;
-  case LoopState::PUBLISH_SENSOR:
-    for (auto* entity : this->sensors_) {
-      entity->publish_new_state(this->heatpump_default_message_);
-    }
-    this->loop_state_ = LoopState::PUBLISH_BINARY_SENSOR;
-    break;
-  case LoopState::PUBLISH_BINARY_SENSOR:
-    for (auto* entity : this->binary_sensors_) {
-      entity->publish_new_state(this->heatpump_default_message_);
-    }
-    this->loop_state_ = LoopState::PUBLISH_TEXT_SENSOR;
-    break;
-  case LoopState::PUBLISH_TEXT_SENSOR:
-    for (auto* entity : this->text_sensors_) {
-      entity->publish_new_state(this->heatpump_default_message_);
-    }
-    this->loop_state_ = LoopState::PUBLISH_NUMBER;
-    break;
-  case LoopState::PUBLISH_NUMBER:
-    for (auto* entity : this->numbers_) {
-      entity->publish_new_state(this->heatpump_default_message_);
-    }
-    this->loop_state_ = LoopState::PUBLISH_SELECT;
-    break;
-  case LoopState::PUBLISH_SELECT:
-    for (auto* entity : this->selects_) {
-      entity->publish_new_state(this->heatpump_default_message_);
-    }
-    this->loop_state_ = LoopState::PUBLISH_SWITCH;
-    break;
-  case LoopState::PUBLISH_SWITCH:
-    for (auto* entity : this->switches_) {
-      entity->publish_new_state(this->heatpump_default_message_);
-    }
-    this->loop_state_ = LoopState::PUBLISH_CLIMATE;
-    break;
-  case LoopState::PUBLISH_CLIMATE:
-    for (auto* entity : this->climates_) {
-      entity->publish_new_state(this->heatpump_default_message_);
-    }
-    this->loop_state_ = LoopState::SEND_REQUEST;
-    break;
-  case LoopState::PUBLISH_EXTRA_SENSOR:
-    for (auto* entity : this->extra_sensors_) {
-      entity->publish_new_state(this->heatpump_extra_message_);
-    }
-    this->loop_state_ = LoopState::SEND_REQUEST;
-    break;
-  case LoopState::PUBLISH_OPTIONAL_BINARY_SENSOR:
-    for (auto* entity : this->optional_binary_sensors_) {
-      entity->publish_new_state(this->heatpump_optional_message_);
-    }
-    this->loop_state_ = LoopState::PUBLISH_OPTIONAL_TEXT_SENSOR;
-    break;
-  case LoopState::PUBLISH_OPTIONAL_TEXT_SENSOR:
-    for (auto* entity : this->optional_text_sensors_) {
-      entity->publish_new_state(this->heatpump_optional_message_);
-    }
-    this->loop_state_ = LoopState::SEND_REQUEST;
-    break;
-  case LoopState::SEND_REQUEST:
-    this->send_request(this->next_request_);
-    this->loop_state_ = LoopState::READ_REQUEST;
-    break;
-  case LoopState::READ_REQUEST:
-    this->read_request();
-    this->loop_state_ = LoopState::RESTART_LOOP;
-    break;
-  default:
-    this->loop_state_ = LoopState::READ_RESPONSE;
-    break;
-  };
-}
-
-void PanasonicHeatpumpComponent::read_response() {
-  while (this->available()) {
-    // Read each byte from heatpump and forward it directly to the client (CZ-TAW1)
-    this->read_byte(&byte_);
-    if (this->uart_client_ != nullptr) {
-      this->uart_client_->write_byte(byte_);
-    }
-
-    // Message shall start with 0x31, 0x71 or 0xF1, if not skip this byte
-    if (!this->response_receiving_) {
-      if (byte_ != 0x31 && byte_ != 0x71 && byte_ != 0xF1)
-        continue;
-      this->response_message_.clear();
-      this->response_receiving_ = true;
-    }
-    // Add current byte to message buffer
-    this->response_message_.push_back(byte_);
-
-    // 2. byte contains the payload size
-    if (this->response_message_.size() == 2) {
-      this->payload_length_ = byte_;
-    }
-    // 3. byte shall be 0x01 or 0x10
-    if (this->response_message_.size() == 3 && byte_ != 0x01 && byte_ != 0x10) {
-      this->response_receiving_ = false;
-      ESP_LOGW(TAG, "Invalid response message: 0x%s. Expected last byte to be 0x01 or 0x10",
-               PanasonicHelpers::byte_array_to_hex_string(this->response_message_, ',').c_str());
-      delay(10);  // NOLINT
-      continue;
-    }
-    // 4. byte shall be 0x01, 0x10 or 0x21
-    if (this->response_message_.size() == 4 && byte_ != 0x01 && byte_ != 0x10 && byte_ != 0x21) {
-      this->response_receiving_ = false;
-      ESP_LOGW(TAG, "Invalid response message: 0x%s. Expected last byte to be 0x01, 0x10 or 0x21",
-               PanasonicHelpers::byte_array_to_hex_string(this->response_message_, ',').c_str());
-      delay(10);  // NOLINT
-      continue;
-    }
-
-    // Check if message is complete
-    if (this->response_message_.size() > 2 && this->response_message_.size() == this->payload_length_ + 3) {
-      this->response_receiving_ = false;
-      this->current_response_count_++;
-      if (this->log_uart_msg_)
-        PanasonicHelpers::log_uart_hex(UART_LOG_RX, this->response_message_, ',');
-    }
-  }
-}
-
-void PanasonicHeatpumpComponent::send_request(RequestType requestType) {
-  switch (requestType) {
-  case RequestType::COMMAND:
-    if (this->log_uart_msg_)
-      PanasonicHelpers::log_uart_hex(UART_LOG_TX, this->command_message_, ',');
-    this->write_array(this->command_message_);
-    this->flush();
-    break;
-  case RequestType::INITIAL:
-    // Probably not necessary but CZ-TAW1 sends this query on boot
-    if (this->log_uart_msg_)
-      PanasonicHelpers::log_uart_hex(UART_LOG_TX, PanasonicCommand::InitialRequest, INIT_REQUEST_SIZE, ',');
-    this->write_array(PanasonicCommand::InitialRequest, INIT_REQUEST_SIZE);
-    this->flush();
-    break;
-  case RequestType::POLLING:
-    if (this->log_uart_msg_)
-      PanasonicHelpers::log_uart_hex(UART_LOG_TX, PanasonicCommand::PollingMessage, DATA_MESSAGE_SIZE, ',');
-    this->write_array(PanasonicCommand::PollingMessage, DATA_MESSAGE_SIZE);
-    this->flush();
-    break;
-  case RequestType::POLLING_EXTRA:
-    if (this->log_uart_msg_)
-      PanasonicHelpers::log_uart_hex(UART_LOG_TX, PanasonicCommand::PollingExtraMessage, DATA_MESSAGE_SIZE, ',');
-    this->write_array(PanasonicCommand::PollingExtraMessage, DATA_MESSAGE_SIZE);
-    this->flush();
-    break;
-  case RequestType::POLLING_OPTIONAL:
-    if (this->log_uart_msg_)
-      PanasonicHelpers::log_uart_hex(UART_LOG_TX, PanasonicCommand::OptionalPCBQuery, OPTIONAL_REQUEST_SIZE, ',');
-    this->write_array(PanasonicCommand::OptionalPCBQuery, OPTIONAL_REQUEST_SIZE);
-    this->flush();
-    break;
-  };
-
-  // Update last request time when request was sent
-  this->last_request_time_ = millis();
-
-  this->next_request_ = RequestType::NONE;
-}
-
-void PanasonicHeatpumpComponent::read_request() {
-  if (this->uart_client_ == nullptr)
+  if (is_failed())
     return;
-
-  while (this->uart_client_->available()) {
-    // Read each byte from client and forward it directly to the heatpump
-    this->uart_client_->read_byte(&byte_);
-    this->write_byte(byte_);
-
-    // Message shall start with 0x31, 0x71 or 0xF1, if not skip this byte
-    if (!this->request_receiving_) {
-      if (byte_ != 0x31 && byte_ != 0x71 && byte_ != 0xF1)
-        continue;
-      this->request_message_.clear();
-      this->request_receiving_ = true;
+  const uint32_t loop_started = millis();
+#ifndef USE_ESP32
+  io_step_();  // legacy ESP8266 stays supported; TX is synchronous on that platform
+#endif
+  const uint32_t drops = dropped_events_.load();
+  if (drops != observed_drops_) {
+    observed_drops_ = drops;
+    standard_valid_ = false;
+    extra_valid_ = false;
+    for (auto* entity : sensors_)
+      entity->invalidate();
+    for (auto* entity : extra_sensors_)
+      entity->invalidate();
+    command_status_ = "rx_queue_overflow";
+    poll_due_ = true;
+    ESP_LOGW(TAG, "UART event queue overflow (%" PRIu32 ")", drops);
+  }
+  Event event;
+  for (unsigned count = 0; count < 4; ++count) {
+#ifdef USE_ESP32
+    if (xQueueReceive(event_queue_, &event, 0) != pdPASS)
+      break;
+#else
+    if (event_queue_.empty())
+      break;
+    event = event_queue_.front();
+    event_queue_.pop_front();
+#endif
+    process_event_(event);
+  }
+  expire_data_();
+  schedule_(millis());
+  max_loop_ms_ = std::max(max_loop_ms_, uint32_t(millis() - loop_started));
+}
+void PanasonicHeatpumpComponent::process_event_(const Event& event) {
+  if (event.kind == EventKind::CLIENT_REQUEST) {
+    last_client_request_time_ = event.frame.received_at;
+    uart_client_timeout_exceeded_ = false;
+    return;
+  }
+  if (event.kind == EventKind::TX_DONE) {
+    ++tx_count_;
+    tx_end_ = event.frame.received_at;
+    tx_completed_ = true;
+    if (!event.frame.started_at) {
+      io_busy_ = false;
+      last_exchange_end_ = tx_end_;
+      command_status_ = "tx_timeout_or_error";
+      if (active_request_type_ == 0xF1)
+        command_active_ = false;
+      return;
     }
-    // Add current byte to message buffer
-    this->request_message_.push_back(byte_);
-
-    // 2. byte contains the payload size
-    if (this->request_message_.size() == 2) {
-      this->payload_length_ = byte_;
+    if (active_request_type_ == 0xF1) {
+      active_sent_ = true;
+      command_sent_at_ = tx_end_;
+      last_control_poll_ = tx_end_;
+      command_status_ = active_changes_.impulse ? "sent_once_unverified" : "waiting_readback";
+      if (active_changes_.impulse)
+        command_active_ = false;
+      control_read_due_ = true;
     }
-    // 3. byte shall be 0x01 or 0x10
-    if (this->request_message_.size() == 3 && byte_ != 0x01 && byte_ != 0x10) {
-      this->request_receiving_ = false;
-      ESP_LOGW(TAG, "Invalid request message: 0x%s. Expected last byte to be 0x01 or 0x10",
-               PanasonicHelpers::byte_array_to_hex_string(this->request_message_, ',').c_str());
-      delay(10);  // NOLINT
-      continue;
+    return;
+  }
+  bad_header_ = event.bad_header;
+  bad_checksum_ = event.bad_checksum;
+  parser_timeouts_ = event.timeouts;
+  if (event.kind != EventKind::STATS)
+    process_frame_(event.frame);
+}
+void PanasonicHeatpumpComponent::process_frame_(const protocol::Frame& frame) {
+  if (log_uart_msg_)
+    PanasonicHelpers::log_uart_hex(UART_LOG_RX, frame.data.data(), frame.size, ',');
+  const uint8_t type = frame.data[3];
+  if (io_busy_ && tx_completed_ && int32_t(frame.started_at - tx_end_) >= 0 &&
+      (type == active_request_type_ || (active_request_type_ == 0xF1 && type == 0x10))) {
+    io_busy_ = false;
+    last_exchange_end_ = frame.received_at;
+  }
+  if (protocol::elapsed(millis(), frame.received_at, data_timeout_))
+    return;
+  if (frame.size == 203 && type == 0x10) {
+    heatpump_default_message_.assign(frame.data.begin(), frame.data.begin() + frame.size);
+    last_standard_time_ = frame.received_at;
+    standard_valid_ = true;
+    ++standard_count_;
+    supports_extra_ = frame.data[199] > 2;
+    if (supports_extra_ && !extra_sensors_.empty())
+      extra_due_ = true;
+    if (optional_pcb_enabled_)
+      optional_due_ = true;
+    if (command_active_ && active_sent_ && int32_t(frame.started_at - command_sent_at_) >= 0 &&
+        active_changes_.matches(heatpump_default_message_)) {
+      command_active_ = false;
+      control_read_due_ = false;
+      command_status_ = "readback_matches";
     }
-    // 4. byte shall be 0x10 or 0x21
-    if (this->request_message_.size() == 4 && byte_ != 0x10 && byte_ != 0x21) {
-      this->request_receiving_ = false;
-      ESP_LOGW(TAG, "Invalid request message: 0x%s. Expected last byte to be 0x10 or 0x21",
-               PanasonicHelpers::byte_array_to_hex_string(this->request_message_, ',').c_str());
-      delay(10);  // NOLINT
-      continue;
-    }
-
-    // Check if message is complete
-    if (this->request_message_.size() > 2 && this->request_message_.size() == this->payload_length_ + 3) {
-      this->request_receiving_ = false;
-      if (this->log_uart_msg_)
-        PanasonicHelpers::log_uart_hex(UART_LOG_TX, this->request_message_, ',');
-
-      // Update last request time when request is complete
-      this->last_request_time_ = millis();
-      this->uart_client_timeout_exceeded_ = false;
-    }
+    publish_standard_();
+  } else if (frame.size == 203 && type == 0x21) {
+    heatpump_extra_message_.assign(frame.data.begin(), frame.data.begin() + frame.size);
+    last_extra_time_ = frame.received_at;
+    extra_valid_ = true;
+    ++extra_count_;
+    ++extra_generation_;
+    for (auto* entity : extra_sensors_)
+      entity->publish_new_state(heatpump_extra_message_);
+  } else if (optional_pcb_enabled_ && frame.size == 20 && type == 0x50) {
+    heatpump_optional_message_.assign(frame.data.begin(), frame.data.begin() + frame.size);
+    for (auto* entity : optional_binary_sensors_)
+      entity->publish_new_state(heatpump_optional_message_);
+    for (auto* entity : optional_text_sensors_)
+      entity->publish_new_state(heatpump_optional_message_);
   }
 }
-
-int PanasonicHeatpumpComponent::getResponseByte(const int index) {
-  if (this->heatpump_default_message_.size() > index)
-    return this->heatpump_default_message_[index];
-  return -1;
+void PanasonicHeatpumpComponent::publish_standard_() {
+  for (const auto* group : {&sensors_, &binary_sensors_, &text_sensors_, &numbers_, &selects_, &switches_, &climates_})
+    for (auto* entity : *group)
+      entity->publish_new_state(heatpump_default_message_);
 }
-
-int PanasonicHeatpumpComponent::getExtraResponseByte(const int index) {
-  if (this->heatpump_extra_message_.size() > index)
-    return this->heatpump_extra_message_[index];
-  return -1;
-}
-
-ResponseType PanasonicHeatpumpComponent::check_response(const std::vector<uint8_t>& data) {
-  // Read response message:
-  // format:          0x71 [payload_length] 0x01 [0x10 || 0x21] [[TOP0 - TOP114] ...] 0x00 [checksum]
-  // payload_length:  payload_length + 3 = packet_length
-  // checksum:        if (sum(all bytes) & 0xFF == 0) ==> valid packet
-
-  if (data.empty())
-    return ResponseType::UNKNOWN;
-  if (data[0] != 0x71)
-    return ResponseType::UNKNOWN;
-  if (this->response_receiving_)
-    return ResponseType::UNKNOWN;
-  if (data.size() != RESPONSE_MSG_SIZE && data.size() != OPTIONAL_RESPONSE_SIZE) {
-    ESP_LOGW(TAG, "Invalid response message length: recieved %d - expected %d or %d", data.size(), RESPONSE_MSG_SIZE,
-             OPTIONAL_RESPONSE_SIZE);
-    delay(10);  // NOLINT
-    return ResponseType::UNKNOWN;
+void PanasonicHeatpumpComponent::expire_data_() {
+  if (standard_valid_ && !standard_fresh()) {
+    standard_valid_ = false;
+    for (const auto* group : {&sensors_, &binary_sensors_, &numbers_, &selects_, &switches_, &climates_})
+      for (auto* entity : *group)
+        entity->invalidate();
   }
-
-  if (data.size() == RESPONSE_MSG_SIZE) {
-    // Verify checksum
-    uint8_t checksum = 0;
-    for (int i = 0; i < data.size(); i++) {
-      checksum += data[i];
+  if (extra_valid_ && !extra_fresh()) {
+    extra_valid_ = false;
+    for (auto* entity : extra_sensors_)
+      entity->invalidate();
+  }
+}
+bool PanasonicHeatpumpComponent::dispatch_(const protocol::Frame& frame, uint8_t type) {
+#ifdef USE_ESP32
+  if (xQueueSend(tx_queue_, &frame, 0) != pdPASS)
+    return false;
+#else
+  if (!tx_queue_.empty())
+    return false;
+  tx_queue_.push_back(frame);
+#endif
+  if (log_uart_msg_)
+    PanasonicHelpers::log_uart_hex(UART_LOG_TX, frame.data.data(), frame.size, ',');
+  io_busy_ = true;
+  tx_completed_ = false;
+  active_request_type_ = type;
+  // Bound even a lost TX_DONE event; no false update to last physical TX time.
+  tx_end_ = millis();
+  return true;
+}
+void PanasonicHeatpumpComponent::schedule_(uint32_t now) {
+  if (command_active_ &&
+      protocol::elapsed(now, active_sent_ ? command_sent_at_ : active_changes_.created_at, command_timeout_)) {
+    command_active_ = false;
+    command_status_ = "readback_unconfirmed";
+    ESP_LOGW(TAG, "Command expired without matching readback");
+  }
+  if (io_busy_) {
+    if (protocol::elapsed(now, tx_end_, response_timeout_ + (tx_completed_ ? 0 : 1000))) {
+      io_busy_ = false;
+      last_exchange_end_ = now;
+      ++response_timeouts_;
+      if (command_active_)
+        control_read_due_ = true;
     }
-    // all bytes (including checksum byte) shall be 0x00
-    if (checksum != 0) {
-      ESP_LOGW(TAG, "Invalid response message: checksum = 0x%02X, last_byte = 0x%02X", checksum, data.back());
-      delay(10);  // NOLINT
-      return ResponseType::UNKNOWN;
+    return;
+  }
+  if (!protocol::elapsed(now, last_exchange_end_, 250))
+    return;
+  if (uart_client_) {
+    uart_client_timeout_exceeded_ =
+        uart_client_timeout_ >= 100 && protocol::elapsed(now, last_client_request_time_, uart_client_timeout_);
+    if (!uart_client_timeout_exceeded_)
+      return;
+  }
+  protocol::Frame frame;
+  if (command_active_) {
+    if (active_sent_ && (control_read_due_ || protocol::elapsed(now, last_control_poll_, get_update_interval()))) {
+      std::copy_n(PanasonicCommand::PollingMessage, DATA_MESSAGE_SIZE, frame.data.begin());
+      frame.size = DATA_MESSAGE_SIZE;
+      if (dispatch_(frame, 0x10)) {
+        control_read_due_ = false;
+        last_control_poll_ = now;
+        poll_due_ = false;
+      }
+    } else if (extra_due_) {
+      std::copy_n(PanasonicCommand::PollingExtraMessage, DATA_MESSAGE_SIZE, frame.data.begin());
+      frame.size = DATA_MESSAGE_SIZE;
+      if (dispatch_(frame, 0x21))
+        extra_due_ = false;
+    }
+    return;
+  }
+  // A completed command's control poll precedes the next queued write.
+  if (control_read_due_)
+    poll_due_ = true;
+  if (poll_due_) {
+    std::copy_n(PanasonicCommand::PollingMessage, DATA_MESSAGE_SIZE, frame.data.begin());
+    frame.size = DATA_MESSAGE_SIZE;
+    if (dispatch_(frame, 0x10)) {
+      poll_due_ = false;
+      control_read_due_ = false;
+    }
+    return;
+  }
+  if (extra_due_ && (!extra_fresh() || protocol::elapsed(now, last_extra_time_, data_timeout_ / 2))) {
+    std::copy_n(PanasonicCommand::PollingExtraMessage, DATA_MESSAGE_SIZE, frame.data.begin());
+    frame.size = DATA_MESSAGE_SIZE;
+    if (dispatch_(frame, 0x21))
+      extra_due_ = false;
+    return;
+  }
+  if (!commands_.empty()) {
+    auto& changes = commands_.front();
+    if (protocol::elapsed(now, changes.created_at, command_timeout_)) {
+      commands_.pop();
+      command_status_ = "queued_command_expired";
+      return;
+    }
+    if (changes.needs_base && !standard_fresh()) {
+      poll_due_ = true;
+      return;
+    }
+    // Revalidate the setpoint context immediately before dispatch.
+    for (uint8_t index = 38; index <= 41; ++index)
+      if (changes.masks[index] &&
+          (!standard_fresh() ||
+           changes.context_mode[index - 38] != ((heatpump_default_message_[28] >> ((index & 1) ? 2 : 0)) & 3) ||
+           changes.context_sensor[index - 38] != ((heatpump_default_message_[22] >> (index <= 39 ? 0 : 4)) & 15) ||
+           !validate_setpoint(index, int(changes.values[index]) - 128, -128, 127))) {
+        commands_.pop();
+        command_status_ = "setpoint_context_changed";
+        return;
+      }
+    const std::vector<uint8_t> empty;
+    if (!changes.build(standard_fresh() ? heatpump_default_message_ : empty, frame))
+      return;
+    if (dispatch_(frame, 0xF1)) {
+      active_changes_ = changes;
+      commands_.pop();
+      command_active_ = true;
+      active_sent_ = false;
+      command_status_ = "sent_to_transport";
+    }
+    return;
+  }
+  if (extra_due_) {
+    std::copy_n(PanasonicCommand::PollingExtraMessage, DATA_MESSAGE_SIZE, frame.data.begin());
+    frame.size = DATA_MESSAGE_SIZE;
+    if (dispatch_(frame, 0x21))
+      extra_due_ = false;
+  } else if (optional_due_) {
+    std::copy_n(PanasonicCommand::OptionalPCBQuery, OPTIONAL_REQUEST_SIZE, frame.data.begin());
+    frame.size = OPTIONAL_REQUEST_SIZE;
+    if (dispatch_(frame, 0x50))
+      optional_due_ = false;
+  }
+}
+bool PanasonicHeatpumpComponent::validate_setpoint(uint8_t index, float value, float minimum, float maximum,
+                                                   float step) const {
+  if (!protocol::valid_number(value, minimum, maximum, step))
+    return false;
+  // Bound the signed value before any conversion into the protocol byte.
+  // Encoded zero is a no-op, so it cannot represent a requested setpoint.
+  const bool plus_one = index == 45 || index == 104;
+  if (!protocol::valid_number(value, plus_one ? 0 : -127, plus_one ? 254 : 127))
+    return false;
+  if (index >= 38 && index <= 41) {
+    if (!standard_fresh())
+      return false;
+    const bool cooling = index == 39 || index == 41;
+    const uint8_t mode = (heatpump_default_message_[28] >> (cooling ? 2 : 0)) & 3;
+    const uint8_t sensor = (heatpump_default_message_[22] >> (index <= 39 ? 0 : 4)) & 15;
+    // Water/thermostat modes only. A room thermistor has a different setpoint semantic.
+    if (sensor != 1 && sensor != 2)
+      return false;
+    if (mode == 1)
+      return protocol::valid_number(value, -5, 5);
+    if (mode == 2)
+      return protocol::valid_number(value, cooling ? 5 : 20, cooling ? 20 : 60);
+    return false;
+  }
+  if (!k_profile_)
+    return true;
+  switch (index) {
+  case 99:
+    return protocol::valid_number(value, -12, -2);
+  case 105:
+    return protocol::valid_number(value, -10, -2);
+  case 106:
+    return protocol::valid_number(value, -8, 0);
+  case 104:
+    return protocol::valid_number(value, 10, 60);
+  case 45:
+    return protocol::valid_number(value, 64, 254);
+  default:
+    return true;
+  }
+}
+bool PanasonicHeatpumpComponent::queue_fields(const std::vector<protocol::Field>& fields) {
+  auto validated = fields;
+  for (auto& field : validated) {
+    if (field.mask == 0xFF && ((field.index >= 38 && field.index <= 41) || field.index == 99 || field.index == 104 ||
+                               field.index == 105 || field.index == 106 || field.index == 45)) {
+      const int offset = field.index == 45 || field.index == 104 ? 1 : 128;
+      if (!validate_setpoint(field.index, int(field.value) - offset, -128, 254)) {
+        command_status_ = "invalid_setpoint";
+        return false;
+      }
+    }
+    if (field.index >= 38 && field.index <= 41) {
+      if (!standard_fresh()) {
+        command_status_ = "missing_control_context";
+        return false;
+      }
+      field.context_mode = (heatpump_default_message_[28] >> ((field.index & 1) ? 2 : 0)) & 3;
+      field.context_sensor = (heatpump_default_message_[22] >> (field.index <= 39 ? 0 : 4)) & 15;
     }
   }
-
-  if (data.size() == RESPONSE_MSG_SIZE) {
-    this->send_extra_request_ =
-        data[3] == 0x10 && data[199] > 0x02 && this->send_extra_request_ == false ? true : false;
+  if (is_failed() || !commands_.enqueue(validated, millis())) {
+    command_status_ = "queue_rejected";
+    ESP_LOGW(TAG, "Command rejected (invalid field, failed component or full queue)");
+    return false;
   }
-
-  // Get response type and save the response
-  auto responseType = ResponseType::UNKNOWN;
-  if (data.size() == OPTIONAL_RESPONSE_SIZE && data[3] == 0x50) {
-    responseType = ResponseType::OPTIONAL;
-    this->heatpump_optional_message_ = data;
-  } else if (data[3] == 0x10) {
-    responseType = ResponseType::STANDARD;
-    this->heatpump_default_message_ = data;
-  } else if (data[3] == 0x21) {
-    responseType = ResponseType::EXTRA;
-    this->heatpump_extra_message_ = data;
-  }
-  if (responseType == ResponseType::UNKNOWN) {
-    ESP_LOGW(TAG, "Unknown response type (4. byte): 0x%02X. Expected 0x10, 0x21 or 0x50.", data[3]);
-    delay(10);  // NOLINT
-    return responseType;
-  }
-
-  // Check if the current response is a new response
-  if (this->last_response_count_ == this->current_response_count_)
-    return ResponseType::UNKNOWN;
-  this->last_response_count_ = this->current_response_count_;
-
-  return responseType;
+  max_command_queue_ = std::max(max_command_queue_, uint32_t(commands_.size()));
+  command_status_ = "queued";
+  return true;
 }
-
-void PanasonicHeatpumpComponent::set_command_high_nibble(const uint8_t value, const uint8_t index) {
-  if (this->next_request_ != RequestType::COMMAND) {
-    // initialize the command
-    this->command_message_.assign(std::begin(PanasonicCommand::CommandMessage),
-                                  std::end(PanasonicCommand::CommandMessage));
-  }
-  uint8_t lowNibble = this->heatpump_default_message_[index] & 0b1111;
-  uint8_t highNibble = value << 4;
-  // set command byte
-  this->command_message_[index] = highNibble + lowNibble;
-  // calculate and set set checksum (last element)
-  this->command_message_.back() =
-      PanasonicCommand::calcChecksum(this->command_message_, this->command_message_.size() - 1);
-
-  // command will be send on next loop
-  this->next_request_ = RequestType::COMMAND;
+bool PanasonicHeatpumpComponent::set_command_field(uint8_t value, uint8_t index, uint8_t mask, bool impulse,
+                                                   bool needs_base) {
+  return queue_fields({{index, value, mask, false, impulse, needs_base}});
 }
-
-void PanasonicHeatpumpComponent::set_command_low_nibble(const uint8_t value, const uint8_t index) {
-  if (this->next_request_ != RequestType::COMMAND) {
-    // initialize the command
-    this->command_message_.assign(std::begin(PanasonicCommand::CommandMessage),
-                                  std::end(PanasonicCommand::CommandMessage));
-  }
-  uint8_t highNibble = this->heatpump_default_message_[index] & 0b11110000;
-  uint8_t lowNibble = value & 0b1111;
-  // set command byte
-  this->command_message_[index] = highNibble + lowNibble;
-  // calculate and set set checksum (last element)
-  this->command_message_.back() =
-      PanasonicCommand::calcChecksum(this->command_message_, this->command_message_.size() - 1);
-
-  // command will be send on next loop
-  this->next_request_ = RequestType::COMMAND;
+bool PanasonicHeatpumpComponent::set_command_byte(uint8_t value, uint8_t index) {
+  return set_command_field(value, index, 0xFF);
 }
-
-void PanasonicHeatpumpComponent::set_command_byte(const uint8_t value, const uint8_t index) {
-  if (this->next_request_ != RequestType::COMMAND) {
-    // initialize the command
-    this->command_message_.assign(std::begin(PanasonicCommand::CommandMessage),
-                                  std::end(PanasonicCommand::CommandMessage));
-  }
-  // set command byte
-  this->command_message_[index] = value;
-  // calculate and set set checksum (last element)
-  this->command_message_.back() =
-      PanasonicCommand::calcChecksum(this->command_message_, this->command_message_.size() - 1);
-
-  // command will be send on next loop
-  this->next_request_ = RequestType::COMMAND;
+bool PanasonicHeatpumpComponent::set_command_curve(uint8_t value, uint8_t index) {
+  const bool valid = (index >= 75 && index <= 82) || (index >= 86 && index <= 93);
+  return valid && queue_fields({{index, value, 0xFF, true, false, true}});
 }
-
-void PanasonicHeatpumpComponent::set_command_curve(const uint8_t value, const uint8_t index) {
-  if (this->next_request_ != RequestType::COMMAND) {
-    // initialize the command
-    this->command_message_.assign(std::begin(PanasonicCommand::CommandMessage),
-                                  std::end(PanasonicCommand::CommandMessage));
-  }
-
-  // Set zone 1 curve bytes
-  if (index == 75 || index == 76 || index == 77 || index == 78 || index == 86 || index == 87 || index == 88 ||
-      index == 89) {
-    this->command_message_[75] = this->heatpump_default_message_[75];
-    this->command_message_[76] = this->heatpump_default_message_[76];
-    this->command_message_[77] = this->heatpump_default_message_[77];
-    this->command_message_[78] = this->heatpump_default_message_[78];
-    this->command_message_[86] = this->heatpump_default_message_[86];
-    this->command_message_[87] = this->heatpump_default_message_[87];
-    this->command_message_[88] = this->heatpump_default_message_[88];
-    this->command_message_[89] = this->heatpump_default_message_[89];
-  }
-  // Set zone 2 curve bytes
-  if (index == 79 || index == 80 || index == 81 || index == 82 || index == 90 || index == 91 || index == 92 ||
-      index == 93) {
-    this->command_message_[79] = this->heatpump_default_message_[79];
-    this->command_message_[80] = this->heatpump_default_message_[80];
-    this->command_message_[81] = this->heatpump_default_message_[81];
-    this->command_message_[82] = this->heatpump_default_message_[82];
-    this->command_message_[90] = this->heatpump_default_message_[90];
-    this->command_message_[91] = this->heatpump_default_message_[91];
-    this->command_message_[92] = this->heatpump_default_message_[92];
-    this->command_message_[93] = this->heatpump_default_message_[93];
-  }
-
-  // set command byte
-  this->command_message_[index] = value;
-  // calculate and set set checksum (last element)
-  this->command_message_.back() =
-      PanasonicCommand::calcChecksum(this->command_message_, this->command_message_.size() - 1);
-
-  // command will be send on next loop
-  this->next_request_ = RequestType::COMMAND;
+std::string PanasonicHeatpumpComponent::get_model_signature() const {
+  if (heatpump_default_message_.size() != 203)
+    return "unknown";
+  return PanasonicHelpers::byte_array_to_hex_string(heatpump_default_message_.data() + 129, 10, ' ');
+}
+std::string PanasonicHeatpumpComponent::get_diagnostics() const {
+  // Keep the text suitable for a Home Assistant state (at most 255 chars).
+  char buffer[256];
+  snprintf(buffer, sizeof(buffer),
+           "s=%lu/%u e=%lu/%u tx=%lu rx=%lu,%lu h=%lu c=%lu at=%lu rt=%lu ov=%lu qm=%lu,%lu lm=%lu q=%u command=%s",
+           (unsigned long)(standard_count_ ? (millis() - last_standard_time_) / 1000 : UINT32_MAX),
+           unsigned(standard_fresh()),
+           (unsigned long)(extra_count_ ? (millis() - last_extra_time_) / 1000 : UINT32_MAX), unsigned(extra_fresh()),
+           (unsigned long)tx_count_, (unsigned long)standard_count_, (unsigned long)extra_count_,
+           (unsigned long)bad_header_, (unsigned long)bad_checksum_, (unsigned long)parser_timeouts_,
+           (unsigned long)response_timeouts_, (unsigned long)dropped_events_.load(),
+           (unsigned long)rx_queue_high_water_.load(), (unsigned long)max_command_queue_, (unsigned long)max_loop_ms_,
+           unsigned(commands_.size()), command_status_.c_str());
+  return buffer;
 }
 }  // namespace panasonic_heatpump
 }  // namespace esphome

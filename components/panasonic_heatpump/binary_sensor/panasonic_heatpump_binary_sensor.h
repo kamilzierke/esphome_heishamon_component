@@ -45,6 +45,9 @@ class PanasonicHeatpumpBinarySensor : public binary_sensor::BinarySensor,
  public:
   PanasonicHeatpumpBinarySensor() = default;
   void dump_config() override;
+  void invalidate() override {
+    this->invalidate_state();
+  }
   void publish_new_state(const std::vector<uint8_t>& data) override;
 };
 }  // namespace panasonic_heatpump

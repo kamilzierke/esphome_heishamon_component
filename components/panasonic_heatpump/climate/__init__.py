@@ -47,13 +47,13 @@ CONFIG_SCHEMA = cv.Schema(
         cv.Optional(CONF_COOL_MODE, default=False): cv.boolean,
         cv.Optional(CONF_CLIMATE_TANK): climate.climate_schema(
             PanasonicHeatpumpClimate
-        ).extend(climate_options(20.0, 65.0, 0.5)),
+        ).extend(climate_options(20.0, 65.0, 1.0)),
         cv.Optional(CONF_CLIMATE_ZONE1): climate.climate_schema(
             PanasonicHeatpumpClimate
-        ).extend(climate_options(-5.0, 5.0, 0.5)),
+        ).extend(climate_options(-5.0, 5.0, 1.0)),
         cv.Optional(CONF_CLIMATE_ZONE2): climate.climate_schema(
             PanasonicHeatpumpClimate
-        ).extend(climate_options(-5.0, 5.0, 0.5)),
+        ).extend(climate_options(-5.0, 5.0, 1.0)),
     }
 ).extend(cv.COMPONENT_SCHEMA)
 
@@ -71,3 +71,32 @@ async def to_code(config):
             cg.add(var.set_temperature_step(child_config[CONF_TEMPERATURE_STEP]))
             cg.add(var.set_cool_mode(config[CONF_COOL_MODE]))
             cg.add(parent.add_climate(var))
+
+
+def _validate_climate_ranges(config):
+    import math
+
+    for key in TYPES:
+        if key not in config:
+            continue
+        child = config[key]
+        low, high, step = (
+            child[k]
+            for k in (CONF_MIN_TEMPERATURE, CONF_MAX_TEMPERATURE, CONF_TEMPERATURE_STEP)
+        )
+        if (
+            not all(math.isfinite(v) for v in (low, high, step))
+            or low > high
+            or step < 1
+        ):
+            raise cv.Invalid(f"{key}: invalid temperature range or step")
+        if (
+            low < -127
+            or high > 127
+            or any(abs(v - round(v)) > 0.0001 for v in (low, high, step))
+        ):
+            raise cv.Invalid(f"{key}: range must fit whole protocol units")
+    return config
+
+
+CONFIG_SCHEMA = cv.All(CONFIG_SCHEMA, _validate_climate_ranges)

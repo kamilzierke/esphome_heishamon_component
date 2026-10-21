@@ -6,7 +6,6 @@ static const char* const TAG = "panasonic_heatpump.select";
 
 void PanasonicHeatpumpSelect::dump_config() {
   LOG_SELECT("", "Panasonic Heatpump Select", this);
-  delay(10);
 }
 
 void PanasonicHeatpumpSelect::control(const std::string& value) {
@@ -17,39 +16,32 @@ void PanasonicHeatpumpSelect::control(const std::string& value) {
 
   switch (this->id_) {
   case SelectIds::CONF_SET2:
-    this->parent_->set_command_byte(PanasonicCommand::setPlus1Multiply16(index), 5);
+    this->parent_->set_command_field(PanasonicCommand::setPlus1Multiply16(index), 5, 0x30);
     break;
   case SelectIds::CONF_SET3:
-    this->parent_->set_command_byte(PanasonicCommand::setPlus1Multiply8(index), 7);
+    this->parent_->set_command_field(PanasonicCommand::setPlus1Multiply8(index), 7, 0x38);
     break;
   case SelectIds::CONF_SET4:
-    this->parent_->set_command_byte(PanasonicCommand::setPlus1(index), 7);
+    this->parent_->set_command_field(PanasonicCommand::setPlus1(index), 7, 0x07);
     break;
   case SelectIds::CONF_SET9:
-    this->parent_->set_command_byte(PanasonicCommand::setOperationMode(index), 6);
+    this->parent_->set_command_field(PanasonicCommand::setOperationMode(index), 6, 0x3F);
     break;
   case SelectIds::CONF_SET17:
-    this->parent_->set_command_byte(PanasonicCommand::setPlus1Multiply64(index), 6);
+    this->parent_->set_command_field(PanasonicCommand::setPlus1Multiply64(index), 6, 0xC0);
     break;
   case SelectIds::CONF_SET26:
-    this->parent_->set_command_byte(PanasonicCommand::setPlus1Multiply16(index), 25);
+    this->parent_->set_command_field(PanasonicCommand::setPlus1Multiply16(index), 25, 0x30);
     break;
   case SelectIds::CONF_SET35:
-    this->parent_->set_command_byte(PanasonicCommand::setPlus1Multiply4(index), 26);
+    this->parent_->set_command_field(PanasonicCommand::setPlus1Multiply4(index), 26, 0x0C);
     break;
   default:
     return;
   };
-
-  this->publish_state(value);
-  this->keep_state_ = 2;
 }
 
 void PanasonicHeatpumpSelect::publish_new_state(const std::vector<uint8_t>& data) {
-  if (this->keep_state_ > 0) {
-    this->keep_state_--;
-    return;
-  }
   if (data.empty())
     return;
 

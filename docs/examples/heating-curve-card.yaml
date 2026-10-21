@@ -1,0 +1,167 @@
+# Replace the example heatpump_ entity IDs with the installed Home Assistant entity IDs.
+type: vertical-stack
+cards:
+- type: custom:plotly-graph
+  title: Zone 1 heating curve
+  refresh_interval: 5
+  raw_plotly_config: true
+  ha_theme: true
+  fn: |-
+    $fn ({ hass, vars }) => {
+      const p = 'sensor.heatpump_';
+      const n = (suffix) => {
+        const s = hass.states[p + suffix]?.state;
+        return s == null || s.trim() === '' ? NaN : Number(s);
+      };
+      const cold = n('z1_heat_curve_outside_low_temp');
+      const warm = n('z1_heat_curve_outside_high_temp');
+      const high = n('z1_heat_curve_target_high_temp');
+      const low = n('z1_heat_curve_target_low_temp');
+      const shift = n('z1_heat_request_temp');
+      const outside = n('outside_temp');
+      const target = n('z1_water_target_temp');
+      const context = hass.states[p + 'heating_mode']?.state === 'Comp. Curve'
+        && hass.states[p + 'z1_sensor_settings']?.state === 'Water Temperature';
+      const valid = [cold, warm, high, low].every(Number.isFinite) && cold < warm;
+      vars.curve = {
+        x: [cold, warm], y: [high, low], shift, outside, target,
+        valid,
+        shifted: valid && context && Number.isFinite(shift) && shift >= -5 && shift <= 5,
+        point: Number.isFinite(outside) && Number.isFinite(target)
+      };
+      return null;
+    }
+  entities:
+  - entity: ''
+    name: Base curve
+    type: scatter
+    mode: lines+markers
+    x: |-
+      $fn ({ vars }) => vars.curve.valid ? vars.curve.x : []
+    "y": |-
+      $fn ({ vars }) => vars.curve.valid ? vars.curve.y : []
+    line:
+      color: '#888888'
+      width: 2
+      dash: dash
+      shape: linear
+    marker:
+      size: 7
+      symbol: square
+    hovertemplate: 'Outdoor: %{x:.1f} °C<br>Base: %{y:.1f} °C<extra></extra>'
+  - entity: ''
+    name: |-
+      $fn ({ vars }) => Number.isFinite(vars.curve.shift)
+        ? 'Shifted (' + (vars.curve.shift > 0 ? '+' : '') + vars.curve.shift + ' K)'
+        : 'Shifted - unavailable'
+    type: scatter
+    mode: lines+markers
+    x: |-
+      $fn ({ vars }) => vars.curve.shifted ? vars.curve.x : []
+    "y": |-
+      $fn ({ vars }) => vars.curve.shifted ? vars.curve.y.map(v => v + vars.curve.shift) : []
+    line:
+      color: '#2196f3'
+      width: 3
+      shape: linear
+    marker:
+      size: 7
+    hovertemplate: 'Outdoor: %{x:.1f} °C<br>Shifted: %{y:.1f} °C<extra></extra>'
+  - entity: ''
+    name: Reported zone water target
+    type: scatter
+    mode: markers
+    x: |-
+      $fn ({ vars }) => vars.curve.point ? [vars.curve.outside] : []
+    "y": |-
+      $fn ({ vars }) => vars.curve.point ? [vars.curve.target] : []
+    marker:
+      color: '#ff9800'
+      size: 12
+      symbol: diamond
+    hovertemplate: 'Outdoor: %{x:.1f} °C<br>Reported target: %{y:.1f} °C<extra></extra>'
+  layout:
+    height: 420
+    margin:
+      l: 60
+      r: 20
+      t: 95
+      b: 60
+    showlegend: true
+    legend:
+      orientation: h
+      x: 0
+      "y": 1.05
+      xanchor: left
+      yanchor: bottom
+      font:
+        size: 12
+    xaxis:
+      type: linear
+      autorange: true
+      automargin: true
+      nticks: 5
+      zeroline: false
+      title:
+        text: Outdoor temperature [°C]
+        font:
+          size: 12
+    yaxis:
+      type: linear
+      autorange: true
+      automargin: true
+      zeroline: false
+      title:
+        text: Target water temperature [°C]
+        font:
+          size: 12
+    hovermode: closest
+  config:
+    displayModeBar: false
+    scrollZoom: false
+    responsive: true
+- type: grid
+  columns: 2
+  square: false
+  cards:
+  - type: tile
+    entity: sensor.heatpump_outside_temp
+    name: Outdoor temperature
+    icon: mdi:thermometer
+  - type: tile
+    entity: sensor.heatpump_z1_water_target_temp
+    name: Zone 1 water target
+    icon: mdi:radiator
+- type: markdown
+  content: |-
+    {% set p = 'sensor.heatpump_' %}
+    {% set shift = states(p ~ 'z1_heat_request_temp') %}
+    {% set valve = states(p ~ 'threeway_valve_state') %}
+    **Reported offset:** {% if is_number(shift) %}{{ '%+.0f' | format(shift | float) }} K{% else %}unavailable{% endif %}
+
+    **Valve circuit:** {{ 'DHW' if valve == 'DHW Tank' else 'Space heating' if valve == 'Buffer Tank' else valve }} - **Operating mode:** {{ states(p ~ 'operating_mode_state') }}
+
+    **Control context:** {{ states(p ~ 'heating_mode') }} - {{ states(p ~ 'z1_sensor_settings') }}
+  entity_id:
+  - sensor.heatpump_z1_heat_request_temp
+  - sensor.heatpump_threeway_valve_state
+  - sensor.heatpump_operating_mode_state
+  - sensor.heatpump_heating_mode
+  - sensor.heatpump_z1_sensor_settings
+- type: conditional
+  conditions:
+  - condition: state
+    entity: sensor.heatpump_heating_mode
+    state: Comp. Curve
+  - condition: state
+    entity: sensor.heatpump_z1_sensor_settings
+    state: Water Temperature
+  card:
+    type: tile
+    entity: number.heatpump_set_z1_heat_request_temperature
+    name: Zone 1 curve offset
+    icon: mdi:chart-line
+    features_position: bottom
+    features:
+    - type: numeric-input
+      style: buttons

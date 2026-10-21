@@ -221,19 +221,19 @@ CONFIG_SCHEMA = cv.Schema(
         cv.Optional(CONF_SET20): number.number_schema(
             PanasonicHeatpumpNumber,
             unit_of_measurement=UNIT_KELVIN,
-        ).extend(number_options(1.0, 15.0, 1.0)),
+        ).extend(number_options(-12.0, -2.0, 1.0)),
         cv.Optional(CONF_SET21): number.number_schema(
             PanasonicHeatpumpNumber,
             unit_of_measurement=UNIT_MINUTE,
-        ).extend(number_options(0.0, 250.0, 1.0)),
+        ).extend(number_options(10.0, 60.0, 1.0)),
         cv.Optional(CONF_SET22): number.number_schema(
             PanasonicHeatpumpNumber,
             unit_of_measurement=UNIT_KELVIN,
-        ).extend(number_options(1.0, 15.0, 1.0)),
+        ).extend(number_options(-10.0, -2.0, 1.0)),
         cv.Optional(CONF_SET23): number.number_schema(
             PanasonicHeatpumpNumber,
             unit_of_measurement=UNIT_KELVIN,
-        ).extend(number_options(1.0, 15.0, 1.0)),
+        ).extend(number_options(-8.0, 0.0, 1.0)),
         cv.Optional(CONF_SET27): number.number_schema(
             PanasonicHeatpumpNumber,
             unit_of_measurement=UNIT_KELVIN,
@@ -272,3 +272,34 @@ async def to_code(config):
             cg.add(var.set_parent(parent))
             cg.add(var.set_id(index))
             cg.add(parent.add_number(var))
+
+
+def _validate_ranges(config):
+    import math
+
+    for key in TYPES:
+        if key not in config:
+            continue
+        child = config[key]
+        low, high, step = (
+            child[k] for k in (CONF_MIN_VALUE, CONF_MAX_VALUE, CONF_STEP)
+        )
+        if (
+            not all(math.isfinite(v) for v in (low, high, step))
+            or low > high
+            or step < 1
+        ):
+            raise cv.Invalid(f"{key}: invalid range or step")
+        domain_min, domain_max = (
+            (0, 254) if key in (CONF_SET15, CONF_SET21) else (-127, 127)
+        )
+        if low < domain_min or high > domain_max:
+            raise cv.Invalid(
+                f"{key}: range cannot be encoded as a nonzero protocol byte"
+            )
+        if any(abs(v - round(v)) > 0.0001 for v in (low, high, step)):
+            raise cv.Invalid(f"{key}: protocol setpoints require whole units")
+    return config
+
+
+CONFIG_SCHEMA = cv.All(CONFIG_SCHEMA, _validate_ranges)

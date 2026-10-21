@@ -6,7 +6,6 @@ static const char* const TAG = "panasonic_heatpump.text_sensor";
 
 void PanasonicHeatpumpTextSensor::dump_config() {
   LOG_TEXT_SENSOR("", "Panasonic Heatpump Text Sensor", this);
-  delay(10);
 }
 
 void PanasonicHeatpumpTextSensor::publish_new_state(const std::vector<uint8_t>& data) {
@@ -195,6 +194,8 @@ void PanasonicHeatpumpTextSensor::publish_new_state(const std::vector<uint8_t>& 
     return;
   };
 
+  if (new_state == "UNDEFINED" && this->id_ == TextSensorIds::CONF_TOP92)
+    new_state = this->parent_->get_model_signature();
   this->publish_state(new_state);
 }
 }  // namespace panasonic_heatpump

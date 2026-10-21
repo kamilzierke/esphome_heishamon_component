@@ -6,123 +6,285 @@ static const char* const TAG = "panasonic_heatpump.number";
 
 void PanasonicHeatpumpNumber::dump_config() {
   LOG_NUMBER("", "Panasonic Heatpump Number", this);
-  delay(10);
 }
 
 void PanasonicHeatpumpNumber::control(float value) {
+  if (!protocol::valid_number(value, this->traits.get_min_value(), this->traits.get_max_value(),
+                              this->traits.get_step())) {
+    ESP_LOGW(TAG, "Invalid number value or step");
+    return;
+  }
   switch (this->id_) {
   case NumberIds::CONF_SET5:
-    this->parent_->set_command_byte(PanasonicCommand::setPlus128(value), 38);
+    if (!this->parent_->validate_setpoint(38, value, this->traits.get_min_value(), this->traits.get_max_value(),
+                                          this->traits.get_step())) {
+      ESP_LOGW(TAG, "Setpoint rejected by profile or current control context");
+      return;
+    }
+    this->parent_->set_command_byte(PanasonicCommand::setPlus128(static_cast<int>(value)), 38);
     break;
   case NumberIds::CONF_SET6:
-    this->parent_->set_command_byte(PanasonicCommand::setPlus128(value), 39);
+    if (!this->parent_->validate_setpoint(39, value, this->traits.get_min_value(), this->traits.get_max_value(),
+                                          this->traits.get_step())) {
+      ESP_LOGW(TAG, "Setpoint rejected by profile or current control context");
+      return;
+    }
+    this->parent_->set_command_byte(PanasonicCommand::setPlus128(static_cast<int>(value)), 39);
     break;
   case NumberIds::CONF_SET7:
-    this->parent_->set_command_byte(PanasonicCommand::setPlus128(value), 40);
+    if (!this->parent_->validate_setpoint(40, value, this->traits.get_min_value(), this->traits.get_max_value(),
+                                          this->traits.get_step())) {
+      ESP_LOGW(TAG, "Setpoint rejected by profile or current control context");
+      return;
+    }
+    this->parent_->set_command_byte(PanasonicCommand::setPlus128(static_cast<int>(value)), 40);
     break;
   case NumberIds::CONF_SET8:
-    this->parent_->set_command_byte(PanasonicCommand::setPlus128(value), 41);
+    if (!this->parent_->validate_setpoint(41, value, this->traits.get_min_value(), this->traits.get_max_value(),
+                                          this->traits.get_step())) {
+      ESP_LOGW(TAG, "Setpoint rejected by profile or current control context");
+      return;
+    }
+    this->parent_->set_command_byte(PanasonicCommand::setPlus128(static_cast<int>(value)), 41);
     break;
   case NumberIds::CONF_SET11:
-    this->parent_->set_command_byte(PanasonicCommand::setPlus128(value), 42);
+    if (!this->parent_->validate_setpoint(42, value, this->traits.get_min_value(), this->traits.get_max_value(),
+                                          this->traits.get_step())) {
+      ESP_LOGW(TAG, "Setpoint rejected by profile or current control context");
+      return;
+    }
+    this->parent_->set_command_byte(PanasonicCommand::setPlus128(static_cast<int>(value)), 42);
     break;
   case NumberIds::CONF_SET15:
-    this->parent_->set_command_byte(PanasonicCommand::setPlus1(value), 45);
+    if (!this->parent_->validate_setpoint(45, value, this->traits.get_min_value(), this->traits.get_max_value(),
+                                          this->traits.get_step())) {
+      ESP_LOGW(TAG, "Setpoint rejected by profile or current control context");
+      return;
+    }
+    this->parent_->set_command_byte(PanasonicCommand::setPlus1(static_cast<int>(value)), 45);
     break;
   case NumberIds::CONF_SET16_01:
-    this->parent_->set_command_curve(PanasonicCommand::setPlus128(value), 75);
+    if (!this->parent_->validate_setpoint(75, value, this->traits.get_min_value(), this->traits.get_max_value(),
+                                          this->traits.get_step())) {
+      ESP_LOGW(TAG, "Setpoint rejected by profile or current control context");
+      return;
+    }
+    this->parent_->set_command_curve(PanasonicCommand::setPlus128(static_cast<int>(value)), 75);
     break;
   case NumberIds::CONF_SET16_02:
-    this->parent_->set_command_curve(PanasonicCommand::setPlus128(value), 76);
+    if (!this->parent_->validate_setpoint(76, value, this->traits.get_min_value(), this->traits.get_max_value(),
+                                          this->traits.get_step())) {
+      ESP_LOGW(TAG, "Setpoint rejected by profile or current control context");
+      return;
+    }
+    this->parent_->set_command_curve(PanasonicCommand::setPlus128(static_cast<int>(value)), 76);
     break;
   case NumberIds::CONF_SET16_03:
-    this->parent_->set_command_curve(PanasonicCommand::setPlus128(value), 77);
+    if (!this->parent_->validate_setpoint(77, value, this->traits.get_min_value(), this->traits.get_max_value(),
+                                          this->traits.get_step())) {
+      ESP_LOGW(TAG, "Setpoint rejected by profile or current control context");
+      return;
+    }
+    this->parent_->set_command_curve(PanasonicCommand::setPlus128(static_cast<int>(value)), 77);
     break;
   case NumberIds::CONF_SET16_04:
-    this->parent_->set_command_curve(PanasonicCommand::setPlus128(value), 78);
+    if (!this->parent_->validate_setpoint(78, value, this->traits.get_min_value(), this->traits.get_max_value(),
+                                          this->traits.get_step())) {
+      ESP_LOGW(TAG, "Setpoint rejected by profile or current control context");
+      return;
+    }
+    this->parent_->set_command_curve(PanasonicCommand::setPlus128(static_cast<int>(value)), 78);
     break;
   case NumberIds::CONF_SET16_05:
-    this->parent_->set_command_curve(PanasonicCommand::setPlus128(value), 79);
+    if (!this->parent_->validate_setpoint(79, value, this->traits.get_min_value(), this->traits.get_max_value(),
+                                          this->traits.get_step())) {
+      ESP_LOGW(TAG, "Setpoint rejected by profile or current control context");
+      return;
+    }
+    this->parent_->set_command_curve(PanasonicCommand::setPlus128(static_cast<int>(value)), 79);
     break;
   case NumberIds::CONF_SET16_06:
-    this->parent_->set_command_curve(PanasonicCommand::setPlus128(value), 80);
+    if (!this->parent_->validate_setpoint(80, value, this->traits.get_min_value(), this->traits.get_max_value(),
+                                          this->traits.get_step())) {
+      ESP_LOGW(TAG, "Setpoint rejected by profile or current control context");
+      return;
+    }
+    this->parent_->set_command_curve(PanasonicCommand::setPlus128(static_cast<int>(value)), 80);
     break;
   case NumberIds::CONF_SET16_07:
-    this->parent_->set_command_curve(PanasonicCommand::setPlus128(value), 81);
+    if (!this->parent_->validate_setpoint(81, value, this->traits.get_min_value(), this->traits.get_max_value(),
+                                          this->traits.get_step())) {
+      ESP_LOGW(TAG, "Setpoint rejected by profile or current control context");
+      return;
+    }
+    this->parent_->set_command_curve(PanasonicCommand::setPlus128(static_cast<int>(value)), 81);
     break;
   case NumberIds::CONF_SET16_08:
-    this->parent_->set_command_curve(PanasonicCommand::setPlus128(value), 82);
+    if (!this->parent_->validate_setpoint(82, value, this->traits.get_min_value(), this->traits.get_max_value(),
+                                          this->traits.get_step())) {
+      ESP_LOGW(TAG, "Setpoint rejected by profile or current control context");
+      return;
+    }
+    this->parent_->set_command_curve(PanasonicCommand::setPlus128(static_cast<int>(value)), 82);
     break;
   case NumberIds::CONF_SET16_09:
-    this->parent_->set_command_curve(PanasonicCommand::setPlus128(value), 86);
+    if (!this->parent_->validate_setpoint(86, value, this->traits.get_min_value(), this->traits.get_max_value(),
+                                          this->traits.get_step())) {
+      ESP_LOGW(TAG, "Setpoint rejected by profile or current control context");
+      return;
+    }
+    this->parent_->set_command_curve(PanasonicCommand::setPlus128(static_cast<int>(value)), 86);
     break;
   case NumberIds::CONF_SET16_10:
-    this->parent_->set_command_curve(PanasonicCommand::setPlus128(value), 87);
+    if (!this->parent_->validate_setpoint(87, value, this->traits.get_min_value(), this->traits.get_max_value(),
+                                          this->traits.get_step())) {
+      ESP_LOGW(TAG, "Setpoint rejected by profile or current control context");
+      return;
+    }
+    this->parent_->set_command_curve(PanasonicCommand::setPlus128(static_cast<int>(value)), 87);
     break;
   case NumberIds::CONF_SET16_11:
-    this->parent_->set_command_curve(PanasonicCommand::setPlus128(value), 88);
+    if (!this->parent_->validate_setpoint(88, value, this->traits.get_min_value(), this->traits.get_max_value(),
+                                          this->traits.get_step())) {
+      ESP_LOGW(TAG, "Setpoint rejected by profile or current control context");
+      return;
+    }
+    this->parent_->set_command_curve(PanasonicCommand::setPlus128(static_cast<int>(value)), 88);
     break;
   case NumberIds::CONF_SET16_12:
-    this->parent_->set_command_curve(PanasonicCommand::setPlus128(value), 89);
+    if (!this->parent_->validate_setpoint(89, value, this->traits.get_min_value(), this->traits.get_max_value(),
+                                          this->traits.get_step())) {
+      ESP_LOGW(TAG, "Setpoint rejected by profile or current control context");
+      return;
+    }
+    this->parent_->set_command_curve(PanasonicCommand::setPlus128(static_cast<int>(value)), 89);
     break;
   case NumberIds::CONF_SET16_13:
-    this->parent_->set_command_curve(PanasonicCommand::setPlus128(value), 90);
+    if (!this->parent_->validate_setpoint(90, value, this->traits.get_min_value(), this->traits.get_max_value(),
+                                          this->traits.get_step())) {
+      ESP_LOGW(TAG, "Setpoint rejected by profile or current control context");
+      return;
+    }
+    this->parent_->set_command_curve(PanasonicCommand::setPlus128(static_cast<int>(value)), 90);
     break;
   case NumberIds::CONF_SET16_14:
-    this->parent_->set_command_curve(PanasonicCommand::setPlus128(value), 91);
+    if (!this->parent_->validate_setpoint(91, value, this->traits.get_min_value(), this->traits.get_max_value(),
+                                          this->traits.get_step())) {
+      ESP_LOGW(TAG, "Setpoint rejected by profile or current control context");
+      return;
+    }
+    this->parent_->set_command_curve(PanasonicCommand::setPlus128(static_cast<int>(value)), 91);
     break;
   case NumberIds::CONF_SET16_15:
-    this->parent_->set_command_curve(PanasonicCommand::setPlus128(value), 92);
+    if (!this->parent_->validate_setpoint(92, value, this->traits.get_min_value(), this->traits.get_max_value(),
+                                          this->traits.get_step())) {
+      ESP_LOGW(TAG, "Setpoint rejected by profile or current control context");
+      return;
+    }
+    this->parent_->set_command_curve(PanasonicCommand::setPlus128(static_cast<int>(value)), 92);
     break;
   case NumberIds::CONF_SET16_16:
-    this->parent_->set_command_curve(PanasonicCommand::setPlus128(value), 93);
+    if (!this->parent_->validate_setpoint(93, value, this->traits.get_min_value(), this->traits.get_max_value(),
+                                          this->traits.get_step())) {
+      ESP_LOGW(TAG, "Setpoint rejected by profile or current control context");
+      return;
+    }
+    this->parent_->set_command_curve(PanasonicCommand::setPlus128(static_cast<int>(value)), 93);
     break;
   case NumberIds::CONF_SET18:
-    this->parent_->set_command_byte(PanasonicCommand::setPlus128(value), 84);
+    if (!this->parent_->validate_setpoint(84, value, this->traits.get_min_value(), this->traits.get_max_value(),
+                                          this->traits.get_step())) {
+      ESP_LOGW(TAG, "Setpoint rejected by profile or current control context");
+      return;
+    }
+    this->parent_->set_command_byte(PanasonicCommand::setPlus128(static_cast<int>(value)), 84);
     break;
   case NumberIds::CONF_SET19:
-    this->parent_->set_command_byte(PanasonicCommand::setPlus128(value), 94);
+    if (!this->parent_->validate_setpoint(94, value, this->traits.get_min_value(), this->traits.get_max_value(),
+                                          this->traits.get_step())) {
+      ESP_LOGW(TAG, "Setpoint rejected by profile or current control context");
+      return;
+    }
+    this->parent_->set_command_byte(PanasonicCommand::setPlus128(static_cast<int>(value)), 94);
     break;
   case NumberIds::CONF_SET20:
-    this->parent_->set_command_byte(PanasonicCommand::setPlus128(value), 99);
+    if (!this->parent_->validate_setpoint(99, value, this->traits.get_min_value(), this->traits.get_max_value(),
+                                          this->traits.get_step())) {
+      ESP_LOGW(TAG, "Setpoint rejected by profile or current control context");
+      return;
+    }
+    this->parent_->set_command_byte(PanasonicCommand::setPlus128(static_cast<int>(value)), 99);
     break;
   case NumberIds::CONF_SET21:
-    this->parent_->set_command_byte(PanasonicCommand::setPlus1(value), 104);
+    if (!this->parent_->validate_setpoint(104, value, this->traits.get_min_value(), this->traits.get_max_value(),
+                                          this->traits.get_step())) {
+      ESP_LOGW(TAG, "Setpoint rejected by profile or current control context");
+      return;
+    }
+    this->parent_->set_command_byte(PanasonicCommand::setPlus1(static_cast<int>(value)), 104);
     break;
   case NumberIds::CONF_SET22:
-    this->parent_->set_command_byte(PanasonicCommand::setPlus128(value), 105);
+    if (!this->parent_->validate_setpoint(105, value, this->traits.get_min_value(), this->traits.get_max_value(),
+                                          this->traits.get_step())) {
+      ESP_LOGW(TAG, "Setpoint rejected by profile or current control context");
+      return;
+    }
+    this->parent_->set_command_byte(PanasonicCommand::setPlus128(static_cast<int>(value)), 105);
     break;
   case NumberIds::CONF_SET23:
-    this->parent_->set_command_byte(PanasonicCommand::setPlus128(value), 106);
+    if (!this->parent_->validate_setpoint(106, value, this->traits.get_min_value(), this->traits.get_max_value(),
+                                          this->traits.get_step())) {
+      ESP_LOGW(TAG, "Setpoint rejected by profile or current control context");
+      return;
+    }
+    this->parent_->set_command_byte(PanasonicCommand::setPlus128(static_cast<int>(value)), 106);
     break;
   case NumberIds::CONF_SET27:
-    this->parent_->set_command_byte(PanasonicCommand::setPlus128(value), 59);
+    if (!this->parent_->validate_setpoint(59, value, this->traits.get_min_value(), this->traits.get_max_value(),
+                                          this->traits.get_step())) {
+      ESP_LOGW(TAG, "Setpoint rejected by profile or current control context");
+      return;
+    }
+    this->parent_->set_command_byte(PanasonicCommand::setPlus128(static_cast<int>(value)), 59);
     break;
   case NumberIds::CONF_SET29:
-    this->parent_->set_command_byte(PanasonicCommand::setPlus128(value), 83);
+    if (!this->parent_->validate_setpoint(83, value, this->traits.get_min_value(), this->traits.get_max_value(),
+                                          this->traits.get_step())) {
+      ESP_LOGW(TAG, "Setpoint rejected by profile or current control context");
+      return;
+    }
+    this->parent_->set_command_byte(PanasonicCommand::setPlus128(static_cast<int>(value)), 83);
     break;
   case NumberIds::CONF_SET36:
-    this->parent_->set_command_byte(PanasonicCommand::setPlus128(value), 65);
+    if (!this->parent_->validate_setpoint(65, value, this->traits.get_min_value(), this->traits.get_max_value(),
+                                          this->traits.get_step())) {
+      ESP_LOGW(TAG, "Setpoint rejected by profile or current control context");
+      return;
+    }
+    this->parent_->set_command_byte(PanasonicCommand::setPlus128(static_cast<int>(value)), 65);
     break;
   case NumberIds::CONF_SET37:
-    this->parent_->set_command_byte(PanasonicCommand::setPlus128(value), 66);
+    if (!this->parent_->validate_setpoint(66, value, this->traits.get_min_value(), this->traits.get_max_value(),
+                                          this->traits.get_step())) {
+      ESP_LOGW(TAG, "Setpoint rejected by profile or current control context");
+      return;
+    }
+    this->parent_->set_command_byte(PanasonicCommand::setPlus128(static_cast<int>(value)), 66);
     break;
   case NumberIds::CONF_SET38:
-    this->parent_->set_command_byte(PanasonicCommand::setPlus128(value), 68);
+    if (!this->parent_->validate_setpoint(68, value, this->traits.get_min_value(), this->traits.get_max_value(),
+                                          this->traits.get_step())) {
+      ESP_LOGW(TAG, "Setpoint rejected by profile or current control context");
+      return;
+    }
+    this->parent_->set_command_byte(PanasonicCommand::setPlus128(static_cast<int>(value)), 68);
     break;
   default:
     return;
   };
-
-  this->publish_state(value);
-  this->keep_state_ = 2;
 }
 
 void PanasonicHeatpumpNumber::publish_new_state(const std::vector<uint8_t>& data) {
-  if (this->keep_state_ > 0) {
-    this->keep_state_--;
-    return;
-  }
   if (data.empty())
     return;
 

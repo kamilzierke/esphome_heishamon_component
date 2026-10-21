@@ -117,8 +117,17 @@ class PanasonicHeatpumpSensor : public sensor::Sensor,
                                 public PanasonicHeatpumpEntity {
  public:
   PanasonicHeatpumpSensor() = default;
+  bool is_extra_power_of(const PanasonicHeatpumpComponent* hp) const {
+    return this->parent_ == hp && this->id_ >= CONF_XTOP0 && this->id_ <= CONF_XTOP5;
+  }
   void dump_config() override;
+  void invalidate() override {
+    this->publish_state(NAN);
+  }
   void publish_new_state(const std::vector<uint8_t>& data) override;
+
+ protected:
+  uint16_t last_bad_water_code_{0xFFFF};
 };
 }  // namespace panasonic_heatpump
 }  // namespace esphome
