@@ -1,4 +1,5 @@
 #include "decode.h"
+#include <cmath>
 
 namespace esphome {
 namespace panasonic_heatpump {
@@ -79,6 +80,7 @@ constexpr const uint8_t KnownModels[NUMBER_OF_MODELS][10] = {
     {0xE2, 0xD5, 0x0B, 0x34, 0x99, 0x83, 0x92, 0x0C, 0x27, 0x98},  // 52
     {0x42, 0xD4, 0x0B, 0x83, 0x71, 0x32, 0xD2, 0x0C, 0x44, 0x55},  // 53
     {0xE2, 0xCF, 0x0C, 0x74, 0x09, 0x12, 0xD0, 0x0E, 0x94, 0x05},  // 54
+    {0xE2, 0xD5, 0x0D, 0x08, 0x95, 0x02, 0xD6, 0x10, 0x67, 0x95},  // 55
 };
 
 int PanasonicDecode::getBit1(uint8_t input) {
@@ -150,13 +152,13 @@ int PanasonicDecode::getLowNibbleMinus1(uint8_t input) {
 }
 
 int PanasonicDecode::getWordMinus1(const std::vector<uint8_t>& data, uint8_t index) {
-  if (index + 1 >= data.size())
+  if (size_t(index) + 1 >= data.size())
     return -1;
   return ((data[index + 1] << 8) + data[index]) - 1;
 }
 
 int PanasonicDecode::getUintt16(const std::vector<uint8_t>& data, uint8_t index) {
-  if (index + 1 >= data.size())
+  if (size_t(index) + 1 >= data.size())
     return -1;
   return (static_cast<uint16_t>((data[index + 1] << 8) | data[index])) - 1;
 }
@@ -194,7 +196,7 @@ int PanasonicDecode::getOperationMode(uint8_t input) {
 // TOP92 //
 int PanasonicDecode::getModel(const std::vector<uint8_t>& data, uint8_t index) {
   // Ensure there are at least 10 bytes in data message after the start index
-  if (index + 10 > data.size())
+  if (size_t(index) + 10 > data.size())
     return -1;
   // Get model bytes from data message
   auto model = std::vector<uint8_t>(data.begin() + index, data.begin() + index + 10);
@@ -212,14 +214,15 @@ int PanasonicDecode::getModel(const std::vector<uint8_t>& data, uint8_t index) {
 // input1 = data[169]
 // input2 = data[170]
 float PanasonicDecode::getPumpFlow(const std::vector<uint8_t>& data, uint8_t index) {
-  if (index + 1 >= data.size())
+  if (size_t(index) + 1 >= data.size())
     return 0.0f;
   return (((float)data[index] - 1) / 256) + ((int)data[index + 1]);
 }
 
 // TOP5, TOP6 //
 float PanasonicDecode::getFractional(uint8_t input, uint8_t shift) {
-  return ((int)((input >> shift) & 0b111) - 1) * 0.25;
+  const int code = (input >> shift) & 7;
+  return code >= 1 && code <= 4 ? (code - 1) * 0.25f : NAN;
 }
 
 // TOP44 //
@@ -245,8 +248,8 @@ std::string PanasonicDecode::getErrorInfo(uint8_t errorType, uint8_t errorNumber
   return error_string;
 }
 
-bool PanasonicDecode::getBinaryState(uint8_t input) {
-  return input != 0;
+bool PanasonicDecode::getBinaryState(int input) {
+  return input == 1;
 }
 
 std::string PanasonicDecode::getTextState(const char* const array[], int index) {

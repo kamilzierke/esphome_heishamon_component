@@ -1,5 +1,7 @@
 # ESPHome Panasonic Heatpump Component
 
+For the K-series reliability update, energy migration and current limitations, see the [K-series migration guide](../../docs/K_SERIES_UPGRADE.md). The general entity catalog below also includes features outside the K profile.
+
 ## Usage
 
 ### What you need
@@ -105,9 +107,9 @@ climate:
     cool_mode: true
     tank:
       name: "DHW"
-      min_temperature: -5.0
-      max_temperature: 5.0
-      temperature_step: 0.5
+      min_temperature: 20.0
+      max_temperature: 65.0
+      temperature_step: 1.0
 ```
 
 ## Configuration variables

@@ -1,208 +1,51 @@
-# Testing Documentation for Panasonic Heatpump Component
+# Panasonic heat pump tests
 
-This directory contains comprehensive tests for the `panasonic_heatpump` ESPHome component.
+The tests cover the configuration schemas, the actual C++ transport/control/energy code, and ESPHome configuration/build compatibility. CI uses **ESPHome 2026.9.1**, not an unpinned latest release.
 
-## Test Structure
+## Test groups
 
-### Unit Tests (`test_panasonic_heatpump_unit.py`)
-- Tests Python configuration validation
-- Tests component metadata (CODEOWNERS, DEPENDENCIES, etc.)
-- Tests configuration schema structure
-- Tests all platform imports (sensor, binary_sensor, text_sensor, number, select, switch, climate)
-- Tests code generation logic
+- `test_panasonic_heatpump_unit.py`: platform imports, metadata, schema structure and code generation.
+- `test_panasonic_heatpump_integration.py`: ESPHome configuration loading for the existing board examples.
+- `test_setpoint_ranges.py`: finite values, integer protocol units, range/step checks and encoding bounds.
+- `../native/test_native.py`: compiles and runs the real C++ parser, component and energy adapter using deterministic UART, clock and preference stubs.
 
-### Integration Tests (`test_panasonic_heatpump_integration.py`)
-- Tests minimal feature configuration on ESP32 board
-- Tests full feature configuration on ESP32 board
-- Tests configuration on ESP8266 board
-- Tests configuration on ESP32-S2 board
-- Tests configuration on ESP32-C3 board
-- Tests configuration with CZ-TAW1 (UART-proxy)
+The native suite includes packet framing/checksum/resynchronization, repeated samples, shared-byte masks, curve updates, readback/control-context behavior, energy gaps, clock rollover, calendar boundaries and persistence. The hex fixtures are **synthetic protocol test vectors**, not equipment logs. The packet decoder assertions use constructed values, including 1000 W heating input and 4000 W heating output.
 
-### Test Configuration Files
-- `test_panasonic_heatpump_esp8266.yaml` - ESP8266 Wemos D1 Mini
-- `test_panasonic_heatpump_esp32s2.yaml` - ESP32-S2 Wemos S2 Mini
-- `test_panasonic_heatpump_esp32c3.yaml` - ESP32-C3 mini (RISC-V)
-- `test_panasonic_heatpump_cztaw1.yaml` - UART proxy setup for CZ-TAW1 client support
-- `test_panasonic_heatpump_mini.yaml` - Minimal ESP32 configuration for basic testing
-- `test_panasonic_heatpump_full.yaml` - Comprehensive ESP32 configuration with all features
+## Run locally
 
-## Running Tests Locally
+Install the test dependencies and the same ESPHome version used in CI. A C++17-capable `g++` must be available on PATH for native tests.
 
-### Prerequisites
-```bash
-pip install -r tests/requirements.txt
+```sh
+python -m pip install -r tests/requirements.txt esphome==2026.9.1
+python -m pytest tests/panasonic_heatpump tests/native -v
 ```
 
-### Run All Tests
-```bash
-pytest tests/panasonic_heatpump/ -v
+To run only the native suite:
+
+```sh
+python -m pytest tests/native/test_native.py -v
 ```
 
-### Run Only Unit Tests
-```bash
-pytest tests/panasonic_heatpump/test_panasonic_heatpump_unit.py -v
+To validate the K-series configuration without uploading firmware:
+
+```sh
+esphome config tests/panasonic_heatpump/test_panasonic_heatpump_k.yaml
 ```
 
-### Run Only Integration Tests
-```bash
-pytest tests/panasonic_heatpump/test_panasonic_heatpump_integration.py -v
-```
+These commands run from the repository root. Test Wi-Fi credentials are deliberate build-only placeholders. UTC in the K configuration is a neutral test choice; installations must select their own accounting timezone.
 
-### Run with Coverage
-```bash
-pytest tests/panasonic_heatpump/ -v --cov=components/panasonic_heatpump --cov-report=html
-```
+## Configuration and build matrix
 
-View coverage report by opening `htmlcov/index.html` in a browser.
+| File | Purpose |
+|---|---|
+| `test_panasonic_heatpump_esp8266.yaml` | ESP8266 configuration/build |
+| `test_panasonic_heatpump_esp32s2.yaml` | ESP32-S2 configuration/build |
+| `test_panasonic_heatpump_esp32c3.yaml` | ESP32-C3 configuration/build |
+| `test_panasonic_heatpump_full.yaml` | Full generic feature configuration/build |
+| `test_panasonic_heatpump_k.yaml` | ESP32-C3/ESP-IDF K profile and energy configuration/build |
+| `test_panasonic_heatpump_mini.yaml` | Minimal configuration validation |
+| `test_panasonic_heatpump_cztaw1.yaml` | Proxy configuration coverage; not hardware qualification |
 
-### Run Specific Test
-```bash
-pytest tests/panasonic_heatpump/test_panasonic_heatpump_unit.py::TestPanasonicHeatpumpConfig::test_component_metadata -v
-```
+The [workflow](../../.github/workflows/test_panasonic_heatpump.yml) builds five configurations: ESP8266, ESP32-S2, ESP32-C3, full and K. It also runs Black, flake8, clang-format, Python/native tests, and minimal/full configuration validation. Proxy configuration coverage is not a sixth firmware-build job.
 
-## GitHub Actions Workflow
-
-The GitHub Actions workflow (`.github/workflows/test_panasonic_heatpump.yml`) includes:
-
-### Jobs
-
-1. **test-build**: Validates and compiles the component
-   - Tests on multiple board types: ESP8266, ESP32 (full), ESP32-S2, ESP32-C3 and with CZ-TAW1 (UART-proxy)
-   - Uses esphome/build-action for firmware compilation
-
-2. **lint-code**: Runs clang-format on C++ code
-   - Ensures consistent code formatting
-   - Checks all .cpp and .h files
-
-3. **lint-python**: Runs Python linters
-   - black: Code formatting
-   - flake8: Style guide enforcement
-
-4. **test-python**: Runs Python unit tests
-   - Executes pytest with coverage
-   - Uploads coverage to Codecov
-
-5. **test-minimal-config**: Tests minimal configuration
-   - Validates minimal configuration file
-   - Ensures component works with bare minimum settings
-
-6. **test-full-config**: Tests full configuration
-   - Validates full feature configuration with all platforms
-
-7. **summary**: Aggregates all test results
-   - Fails if any test job fails
-   - Provides overview of all test results
-
-### Triggers
-
-The workflow runs on:
-- Push to `main` or `heatpump**` branches
-- Pull requests to `main` branch
-- Manual workflow dispatch
-- When relevant files change:
-  - `components/panasonic_heatpump/**`
-  - `tests/panasonic_heatpump/**`
-  - `.github/workflows/test_panasonic_heatpump.yml`
-
-## Test Coverage
-
-The test suite covers:
-
-✅ Component configuration validation  
-✅ UART dependency checking  
-✅ All sensor platforms  
-✅ All binary sensor platforms  
-✅ All text sensor platforms  
-✅ All number control platforms  
-✅ All select control platforms  
-✅ All switch control platforms  
-✅ All climate control platforms  
-✅ Code compilation for different ESP boards  
-✅ C++ code formatting  
-✅ Python code formatting and style  
-
-## Configuration Examples
-
-### Minimal Configuration
-```yaml
-uart:
-  - id: uart_hp
-    tx_pin: GPIO1
-    rx_pin: GPIO3
-    baud_rate: 9600
-    parity: EVEN
-
-panasonic_heatpump:
-  id: hp
-```
-
-### Full Configuration
-```yaml
-uart:
-  - id: uart_heatpump
-    tx_pin: GPIO37
-    rx_pin: GPIO39
-    baud_rate: 9600
-    parity: EVEN
-  - id: uart_client
-    tx_pin: GPIO18
-    rx_pin: GPIO16
-    baud_rate: 9600
-    parity: EVEN
-
-panasonic_heatpump:
-  id: my_heatpump
-  uart_id: uart_heatpump
-  uart_client_id: uart_client
-  log_uart_msg: true
-  update_interval: 3s
-```
-
-## Adding New Tests
-
-When adding new features to the component:
-
-1. Update `test_panasonic_heatpump.yaml` with new configuration options
-2. Add unit tests in `test_panasonic_heatpump_unit.py`
-3. Add integration tests in `test_panasonic_heatpump_integration.py` if needed
-4. Update this README with new test coverage information
-
-## Troubleshooting
-
-### ESPHome Not Found
-If you get "ESPHome not installed" errors, install it:
-```bash
-pip install esphome
-```
-
-### Import Errors
-Make sure you're running pytest from the repository root:
-```bash
-cd /path/to/esphome_components
-pytest tests/ -v
-```
-
-### Timeout Errors
-Some tests may timeout on slower systems. Increase the timeout in `pytest.ini`:
-```ini
-timeout = 600  # 10 minutes
-```
-
-## Continuous Integration
-
-All tests must pass before merging to main branch. The GitHub Actions workflow ensures:
-- Code compiles successfully
-- Code follows formatting standards
-- All unit and integration tests pass
-- Latest ESPHome versions is supported
-- ESP8266 and ESP32 boards are supported
-
-## Contributing
-
-When contributing to the panasonic_heatpump component:
-1. Write tests for new features
-2. Ensure all existing tests pass
-3. Maintain or improve code coverage
-4. Follow the existing code style
-5. Update this documentation as needed
+A successful configuration check or build does not establish physical behavior on every board. See the [migration guide](../../docs/K_SERIES_UPGRADE.md#validation-and-remaining-limits) for the scope of hardware observations and untested cases.

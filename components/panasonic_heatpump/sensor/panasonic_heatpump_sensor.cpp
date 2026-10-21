@@ -6,7 +6,6 @@ static const char* const TAG = "panasonic_heatpump.sensor";
 
 void PanasonicHeatpumpSensor::dump_config() {
   LOG_SENSOR("", "Panasonic Heatpump Sensor", this);
-  delay(10);
 }
 
 void PanasonicHeatpumpSensor::publish_new_state(const std::vector<uint8_t>& data) {
@@ -33,14 +32,14 @@ void PanasonicHeatpumpSensor::publish_new_state(const std::vector<uint8_t>& data
   case SensorIds::CONF_TOP5:
     if (!require_index(143))
       return;
-    new_state = PanasonicDecode::getByteMinus128(data[143]) + PanasonicDecode::getFractional(data[118], 0);
+    new_state = protocol::water_temperature(data[143], data[118], 0);
     if (this->has_state() && this->get_state() == new_state)
       return;
     break;
   case SensorIds::CONF_TOP6:
     if (!require_index(144))
       return;
-    new_state = PanasonicDecode::getByteMinus128(data[144]) + PanasonicDecode::getFractional(data[118], 3);
+    new_state = protocol::water_temperature(data[144], data[118], 3);
     if (this->has_state() && this->get_state() == new_state)
       return;
     break;
@@ -94,18 +93,22 @@ void PanasonicHeatpumpSensor::publish_new_state(const std::vector<uint8_t>& data
       return;
     break;
   case SensorIds::CONF_TOP15:
+    if (this->parent_->is_k_profile()) {
+      this->invalidate();
+      return;
+    }
     if (!require_index(194))
       return;
     new_state = PanasonicDecode::getByteMinus1Times200(data[194]);
-    if (this->has_state() && this->get_state() == new_state)
-      return;
     break;
   case SensorIds::CONF_TOP16:
+    if (this->parent_->is_k_profile()) {
+      this->invalidate();
+      return;
+    }
     if (!require_index(193))
       return;
     new_state = PanasonicDecode::getByteMinus1Times200(data[193]);
-    if (this->has_state() && this->get_state() == new_state)
-      return;
     break;
   case SensorIds::CONF_TOP21:
     if (!require_index(158))
@@ -220,32 +223,40 @@ void PanasonicHeatpumpSensor::publish_new_state(const std::vector<uint8_t>& data
       return;
     break;
   case SensorIds::CONF_TOP38:
+    if (this->parent_->is_k_profile()) {
+      this->invalidate();
+      return;
+    }
     if (!require_index(196))
       return;
     new_state = PanasonicDecode::getByteMinus1Times200(data[196]);
-    if (this->has_state() && this->get_state() == new_state)
-      return;
     break;
   case SensorIds::CONF_TOP39:
+    if (this->parent_->is_k_profile()) {
+      this->invalidate();
+      return;
+    }
     if (!require_index(195))
       return;
     new_state = PanasonicDecode::getByteMinus1Times200(data[195]);
-    if (this->has_state() && this->get_state() == new_state)
-      return;
     break;
   case SensorIds::CONF_TOP40:
+    if (this->parent_->is_k_profile()) {
+      this->invalidate();
+      return;
+    }
     if (!require_index(198))
       return;
     new_state = PanasonicDecode::getByteMinus1Times200(data[198]);
-    if (this->has_state() && this->get_state() == new_state)
-      return;
     break;
   case SensorIds::CONF_TOP41:
+    if (this->parent_->is_k_profile()) {
+      this->invalidate();
+      return;
+    }
     if (!require_index(197))
       return;
     new_state = PanasonicDecode::getByteMinus1Times200(data[197]);
-    if (this->has_state() && this->get_state() == new_state)
-      return;
     break;
   case SensorIds::CONF_TOP42:
     if (!require_index(147))
@@ -369,7 +380,7 @@ void PanasonicHeatpumpSensor::publish_new_state(const std::vector<uint8_t>& data
   case SensorIds::CONF_TOP64:
     if (!require_index(163))
       return;
-    new_state = PanasonicDecode::getByteMinus1Div5(data[163]);
+    new_state = PanasonicDecode::getByteMinus1Div5(data[163]) * 0.980665f;
     if (this->has_state() && this->get_state() == new_state)
       return;
     break;
@@ -381,6 +392,10 @@ void PanasonicHeatpumpSensor::publish_new_state(const std::vector<uint8_t>& data
       return;
     break;
   case SensorIds::CONF_TOP66:
+    if (this->parent_->is_k_profile()) {
+      this->invalidate();
+      return;
+    }
     if (!require_index(164))
       return;
     new_state = PanasonicDecode::getByteMinus1Times50(data[164]);
@@ -693,48 +708,57 @@ void PanasonicHeatpumpSensor::publish_new_state(const std::vector<uint8_t>& data
     if (!require_index(15))
       return;
     new_state = PanasonicDecode::getWordMinus1(data, 14);
-    if (this->has_state() && this->get_state() == new_state)
-      return;
     break;
   case SensorIds::CONF_XTOP1:
     if (!require_index(17))
       return;
     new_state = PanasonicDecode::getWordMinus1(data, 16);
-    if (this->has_state() && this->get_state() == new_state)
-      return;
     break;
   case SensorIds::CONF_XTOP2:
     if (!require_index(19))
       return;
     new_state = PanasonicDecode::getWordMinus1(data, 18);
-    if (this->has_state() && this->get_state() == new_state)
-      return;
     break;
   case SensorIds::CONF_XTOP3:
     if (!require_index(21))
       return;
     new_state = PanasonicDecode::getWordMinus1(data, 20);
-    if (this->has_state() && this->get_state() == new_state)
-      return;
     break;
   case SensorIds::CONF_XTOP4:
     if (!require_index(23))
       return;
     new_state = PanasonicDecode::getWordMinus1(data, 22);
-    if (this->has_state() && this->get_state() == new_state)
-      return;
     break;
   case SensorIds::CONF_XTOP5:
     if (!require_index(25))
       return;
     new_state = PanasonicDecode::getWordMinus1(data, 24);
-    if (this->has_state() && this->get_state() == new_state)
-      return;
     break;
   default:
     return;
   };
 
+  if (this->id_ == SensorIds::CONF_TOP5 || this->id_ == SensorIds::CONF_TOP6) {
+    const bool inlet = this->id_ == SensorIds::CONF_TOP5;
+    const uint8_t raw = data[inlet ? 143 : 144];
+    const uint8_t code = (data[118] >> (inlet ? 0 : 3)) & 7;
+    const uint16_t token = (uint16_t(raw) << 3) | code;
+    if (!std::isfinite(new_state)) {
+      if (token != last_bad_water_code_)
+        ESP_LOGW(TAG, "Unsupported water temperature: %s whole=%d fraction_code=%u", inlet ? "inlet" : "outlet",
+                 int(raw) - 128, unsigned(code));
+      last_bad_water_code_ = token;
+    } else
+      last_bad_water_code_ = 0xFFFF;
+  }
+  const bool power = this->id_ >= SensorIds::CONF_XTOP0 || this->id_ == SensorIds::CONF_TOP15 ||
+                     this->id_ == SensorIds::CONF_TOP16 || this->id_ == SensorIds::CONF_TOP38 ||
+                     this->id_ == SensorIds::CONF_TOP39 || this->id_ == SensorIds::CONF_TOP40 ||
+                     this->id_ == SensorIds::CONF_TOP41;
+  if (power && (!std::isfinite(new_state) || new_state < 0)) {
+    this->invalidate();
+    return;
+  }
   this->publish_state(new_state);
 }
 }  // namespace panasonic_heatpump
